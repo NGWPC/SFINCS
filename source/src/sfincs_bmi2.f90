@@ -368,7 +368,7 @@ contains
     cname = canon_var_name(name)
 
     select case (trim(cname))
-    case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
+    case (VAR_ZB, VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
           VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF)
       grid = GRID_CELL
       status = BMI_SUCCESS
@@ -394,7 +394,7 @@ contains
     case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZVOL)
       type = 'double precision'
       status = BMI_SUCCESS
-    case (VAR_Q, VAR_UV, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
+    case (VAR_Q, VAR_ZB, VAR_UV, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
           VAR_Z_XZ, VAR_Z_YZ)
       type = 'real'
       status = BMI_SUCCESS
@@ -417,7 +417,7 @@ contains
     cname = canon_var_name(name)
 
     select case (trim(cname))
-    case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL)
+    case (VAR_ZS, VAR_ZB, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL)
       units = 'm'
       status = BMI_SUCCESS
     case (VAR_Q, VAR_QEXT)
@@ -457,7 +457,7 @@ contains
     case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZVOL)
       size = 8
       status = BMI_SUCCESS
-    case (VAR_Q, VAR_UV, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
+    case (VAR_Q, VAR_ZB, VAR_UV, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
           VAR_Z_XZ, VAR_Z_YZ)
       size = 4
       status = BMI_SUCCESS
@@ -485,7 +485,7 @@ contains
     end if
 
     select case (trim(cname))
-    case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
+    case (VAR_ZS, VAR_ZB, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
           VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF)
       n = np
     case (VAR_Q, VAR_UV, VAR_UV_NM, VAR_UV_NMU, VAR_UV_DIR, VAR_UV_TYPE)
@@ -1226,7 +1226,7 @@ end function sfincs_bmi_get_value_double
     cname = lower_str(trim(name))
 
     select case (trim(cname))
-    case ('zb', 'bedlevel')
+    case ('bedlevel', 'zb', 'zbed', 'bed_level')
       canon = VAR_ZB
     case ('zs', 'eta2', 'troute_eta2', 'troute-eta2', 'trouteeta2')
       canon = VAR_ZS
