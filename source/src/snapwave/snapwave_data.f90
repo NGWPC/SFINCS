@@ -95,6 +95,7 @@ module snapwave_data
    character*256                               :: snapwave_btpfile
    character*256                               :: snapwave_bwdfile
    character*256                               :: snapwave_bdsfile
+   character*256                               :: snapwave_bzsfile
    character*256                               :: netsnapwavefile   
    !
    integer                                     :: nwbnd                   ! number of support points wave boundary 

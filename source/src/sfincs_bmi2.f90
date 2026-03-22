@@ -10,7 +10,7 @@ module sfincs_bmi2
 
   use sfincs_data, only: &
       np, npuv, t0, t1, &
-      zs, q, uv, zsmax, z_volume, &
+      zs, zb, q, uv, zsmax, z_volume, &
       qext, prcp, windu, windv, patm, uorb, &
       z_xz, z_yz, &
       uv_index_z_nm, uv_index_z_nmu, &
@@ -24,6 +24,7 @@ module sfincs_bmi2
   integer, parameter :: GRID_CELL = 0
   integer, parameter :: GRID_EDGE = 1
 
+  character(len=*), parameter :: VAR_ZB      = 'zb'
   character(len=*), parameter :: VAR_ZS      = 'zs'
   character(len=*), parameter :: VAR_Q       = 'q'
   character(len=*), parameter :: VAR_UV      = 'uv'
@@ -499,28 +500,28 @@ contains
     status = BMI_SUCCESS
   end function sfincs_bmi_get_var_nbytes
 
-  function sfincs_bmi_get_var_location(this, name, location) result(status)
-    class(sfincs_bmi), intent(in)  :: this
-    character(len=*),  intent(in)  :: name
-    character(len=*),  intent(out) :: location
-    integer :: status
-    character(len=:), allocatable :: cname
+function sfincs_bmi_get_var_location(this, name, location) result(status)
+  class(sfincs_bmi), intent(in)  :: this
+  character(len=*),  intent(in)  :: name
+  character(len=*),  intent(out) :: location
+  integer :: status
+  character(len=:), allocatable :: cname
 
-    cname = canon_var_name(name)
+  cname = canon_var_name(name)
 
-    select case (trim(cname))
-    case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
-          VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF)
-      location = 'node'
-      status = BMI_SUCCESS
-    case (VAR_Q, VAR_UV, VAR_UV_NM, VAR_UV_NMU, VAR_UV_DIR, VAR_UV_TYPE)
-      location = 'edge'
-      status = BMI_SUCCESS
-    case default
-      location = ''
-      status = BMI_FAILURE
-    end select
-  end function sfincs_bmi_get_var_location
+  select case (trim(cname))
+  case (VAR_ZB, VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
+        VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF)
+    location = 'node'
+    status = BMI_SUCCESS
+  case (VAR_Q, VAR_UV, VAR_UV_NM, VAR_UV_NMU, VAR_UV_DIR, VAR_UV_TYPE)
+    location = 'edge'
+    status = BMI_SUCCESS
+  case default
+    location = ''
+    status = BMI_FAILURE
+  end select
+end function sfincs_bmi_get_var_location
 
   function sfincs_bmi_get_grid_rank(this, grid, rank) result(status)
     class(sfincs_bmi), intent(in)  :: this
@@ -733,92 +734,113 @@ contains
     status = BMI_FAILURE
   end function sfincs_bmi_get_grid_face_edges
 
-  function sfincs_bmi_get_value_float(this, name, dest) result(status)
-    class(sfincs_bmi), intent(in)    :: this
-    character(len=*),  intent(in)    :: name
-    real(real32),      intent(inout) :: dest(:)
-    integer :: status
-    character(len=:), allocatable :: cname
+function sfincs_bmi_get_value_float(this, name, dest) result(status)
+  class(sfincs_bmi), intent(in)    :: this
+  character(len=*),  intent(in)    :: name
+  real(real32),      intent(inout) :: dest(:)
+  integer :: status
+  character(len=:), allocatable :: cname
+  integer :: i
 
-    cname = canon_var_name(name)
+  cname = canon_var_name(name)
 
-    select case (trim(cname))
-    case (VAR_ZS)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = real(zs(1:np), kind=real32)
-      status = BMI_SUCCESS
-    case (VAR_Q)
-      if (size(dest) < npuv) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:npuv) = q(1:npuv)
-      status = BMI_SUCCESS
-    case (VAR_UV)
-      if (size(dest) < npuv) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:npuv) = uv(1:npuv)
-      status = BMI_SUCCESS
-    case (VAR_ZSMAX)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = zsmax(1:np)
-      status = BMI_SUCCESS
-    case (VAR_QEXT)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = qext(1:np)
-      status = BMI_SUCCESS
-    case (VAR_PRCP)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = prcp(1:np)
-      status = BMI_SUCCESS
-    case (VAR_WINDU)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = windu(1:np)
-      status = BMI_SUCCESS
-    case (VAR_WINDV)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = windv(1:np)
-      status = BMI_SUCCESS
-    case (VAR_PATM)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = patm(1:np)
-      status = BMI_SUCCESS
-    case (VAR_UORB)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = uorb(1:np)
-      status = BMI_SUCCESS
-    case (VAR_Z_XZ)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = z_xz(1:np)
-      status = BMI_SUCCESS
-    case (VAR_Z_YZ)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = z_yz(1:np)
-      status = BMI_SUCCESS
-    case default
-      status = BMI_FAILURE
-    end select
-  end function sfincs_bmi_get_value_float
+  select case (trim(cname))
+  case (VAR_ZS)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = real(zs(1:np), kind=real32)
+    status = BMI_SUCCESS
+
+  case (VAR_ZB)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = zb(1:np)
+
+    status = BMI_SUCCESS
+
+  case (VAR_Q)
+    if (size(dest) < npuv) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:npuv) = q(1:npuv)
+    status = BMI_SUCCESS
+
+  case (VAR_UV)
+    if (size(dest) < npuv) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:npuv) = uv(1:npuv)
+    status = BMI_SUCCESS
+
+  case (VAR_ZSMAX)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = zsmax(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_QEXT)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = qext(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_PRCP)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = prcp(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_WINDU)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = windu(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_WINDV)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = windv(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_PATM)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = patm(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_UORB)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = uorb(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_Z_XZ)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = z_xz(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_Z_YZ)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = z_yz(1:np)
+    status = BMI_SUCCESS
+
+  case default
+    status = BMI_FAILURE
+  end select
+end function sfincs_bmi_get_value_float
 
   function sfincs_bmi_set_value_float(this, name, src) result(status)
     class(sfincs_bmi), intent(inout) :: this
@@ -871,14 +893,18 @@ contains
     end select
   end function sfincs_bmi_set_value_float
 
-  function sfincs_bmi_get_value_ptr_float(this, name, dest_ptr) result(status)
-    class(sfincs_bmi), intent(in) :: this
-    character(len=*),  intent(in) :: name
-    real(real32),      pointer, intent(inout) :: dest_ptr(:)
-    integer :: status
-    nullify(dest_ptr)
-    status = BMI_FAILURE
-  end function sfincs_bmi_get_value_ptr_float
+function sfincs_bmi_get_value_ptr_float(this, name, dest_ptr) result(status)
+  class(sfincs_bmi), intent(in) :: this
+  character(len=*),  intent(in) :: name
+  real(real32),      pointer, intent(inout) :: dest_ptr(:)
+  integer :: status
+
+  ! Disable pointer-based access
+  nullify(dest_ptr)
+  status = BMI_FAILURE
+
+end function sfincs_bmi_get_value_ptr_float
+
 
   function sfincs_bmi_get_value_at_indices_float(this, name, dest, inds) result(status)
     class(sfincs_bmi), intent(in)    :: this
@@ -969,32 +995,44 @@ contains
     end select
   end function sfincs_bmi_set_value_at_indices_float
 
-  function sfincs_bmi_get_value_double(this, name, dest) result(status)
-    class(sfincs_bmi), intent(in)    :: this
-    character(len=*),  intent(in)    :: name
-    real(real64),      intent(inout) :: dest(:)
-    integer :: status
-    character(len=:), allocatable :: cname
+function sfincs_bmi_get_value_double(this, name, dest) result(status)
+  class(sfincs_bmi), intent(in)    :: this
+  character(len=*),  intent(in)    :: name
+  real(real64),      intent(inout) :: dest(:)
+  integer :: status
+  character(len=:), allocatable :: cname
+  integer :: i
 
-    cname = canon_var_name(name)
+  cname = canon_var_name(name)
 
-    select case (trim(cname))
-    case (VAR_ZS)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = zs(1:np)
-      status = BMI_SUCCESS
-    case (VAR_ZVOL)
-      if (size(dest) < np) then
-        status = BMI_FAILURE; return
-      end if
-      dest(1:np) = z_volume(1:np)
-      status = BMI_SUCCESS
-    case default
+  select case (trim(cname))
+  case (VAR_ZB)
+    if (size(dest) < np) then
       status = BMI_FAILURE
-    end select
-  end function sfincs_bmi_get_value_double
+      return
+    end if
+    dest(1:np) = real(zb(1:np), kind=real64)
+    status = BMI_SUCCESS
+
+  case (VAR_ZS)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = zs(1:np)
+    status = BMI_SUCCESS
+
+  case (VAR_ZVOL)
+    if (size(dest) < np) then
+      status = BMI_FAILURE; return
+    end if
+    dest(1:np) = z_volume(1:np)
+    status = BMI_SUCCESS
+
+  case default
+    status = BMI_FAILURE
+  end select
+end function sfincs_bmi_get_value_double
+
 
   function sfincs_bmi_set_value_double(this, name, src) result(status)
     class(sfincs_bmi), intent(inout) :: this
@@ -1188,6 +1226,8 @@ contains
     cname = lower_str(trim(name))
 
     select case (trim(cname))
+    case ('zb', 'bedlevel')
+      canon = VAR_ZB
     case ('zs', 'eta2', 'troute_eta2', 'troute-eta2', 'trouteeta2')
       canon = VAR_ZS
     case ('q')

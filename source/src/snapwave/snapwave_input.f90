@@ -59,7 +59,7 @@ contains
    call read_char_input(500,'btpfile',snapwave_btpfile,'')
    call read_char_input(500,'bwdfile',snapwave_bwdfile,'')
    call read_char_input(500,'bdsfile',snapwave_bdsfile,'')
-   ! call read_char_input(500,'bzsfile',snapwave_bzsfile,'')
+   call read_char_input(500,'bzsfile',snapwave_bzsfile,'')
 
    ! call read_char_input(500,'jonswapfile',jonswapfile,'')
    ! call read_char_input(500,'bndfile',bndfile,'')

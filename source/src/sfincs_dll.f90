@@ -87,54 +87,64 @@ contains
   !  Returned pointer is valid until the next get_value_ptr call or finalize().
   !===================================================================
   function get_value_ptr(name_c, ptr_c) bind(C, name="get_value_ptr") result(ierr)
-    type(c_ptr), value :: name_c
-    type(c_ptr)        :: ptr_c
-    integer(c_int)     :: ierr
+  type(c_ptr), value :: name_c
+  type(c_ptr)        :: ptr_c
+  integer(c_int)     :: ierr
 
-    character(len=:), allocatable :: name
-    integer :: stat
-    integer :: n
+  character(len=:), allocatable :: name
+  character(len=:), allocatable :: key
+  real(real32), pointer :: fptr(:) => null()
+  integer :: stat
 
-    call cstring_to_fortran(name_c, name)
+  call cstring_to_fortran(name_c, name)
 
+  if (.not. allocated(name)) then
     ptr_c = c_null_ptr
     ierr  = int(BMI_FAILURE, c_int)
+    return
+  end if
 
-    if (.not. allocated(name)) return
+  key = uppercase(trim(name))
 
-    n = get_var_size_from_bmi(trim(name))
-    if (n <= 0) return
+  select case (trim(key))
 
-    if (allocated(export_f32)) then
-      if (size(export_f32) /= n) then
-        deallocate(export_f32)
-        allocate(export_f32(n))
-      end if
-    else
-      allocate(export_f32(n))
-    end if
+  case ('ZS', 'WATERLEVEL', 'SURFACE_WATER__ELEVATION')
+     stat = M%get_value_ptr_float('zs', fptr)
+     if (stat == BMI_SUCCESS .and. associated(fptr)) then
+       ptr_c = c_loc(fptr(1))
+       ierr  = int(BMI_SUCCESS, c_int)
+     else
+       ptr_c = c_null_ptr
+       ierr  = int(BMI_FAILURE, c_int)
+     end if
 
-    export_f32 = 0.0_real32
+  case ('ZB', 'BEDLEVEL', 'LAND_SURFACE__ELEVATION')
+     stat = M%get_value_ptr_float('zb', fptr)
+     if (stat == BMI_SUCCESS .and. associated(fptr)) then
+       ptr_c = c_loc(fptr(1))
+       ierr  = int(BMI_SUCCESS, c_int)
+     else
+       ptr_c = c_null_ptr
+       ierr  = int(BMI_FAILURE, c_int)
+     end if
 
-    select case (trim(name))
-    case ('zs', 'eta2', 'troute_eta2', 'q', 'uv')
-      stat = M%get_value_float(trim(name), export_f32)
-      if (stat /= BMI_SUCCESS) then
-        ptr_c = c_null_ptr
-        ierr  = int(BMI_FAILURE, c_int)
-        return
-      end if
+  case ('DEPTH', 'WATERDEPTH', 'SURFACE_WATER__DEPTH')
+     stat = M%get_value_ptr_float('depth', fptr)
+     if (stat == BMI_SUCCESS .and. associated(fptr)) then
+       ptr_c = c_loc(fptr(1))
+       ierr  = int(BMI_SUCCESS, c_int)
+     else
+       ptr_c = c_null_ptr
+       ierr  = int(BMI_FAILURE, c_int)
+     end if
 
-      if (n > 0) then
-        ptr_c = c_loc(export_f32(1))
-        ierr  = int(BMI_SUCCESS, c_int)
-      end if
+  case default
+     ptr_c = c_null_ptr
+     ierr  = int(BMI_FAILURE, c_int)
+  end select
 
-    case default
-      ptr_c = c_null_ptr
-      ierr  = int(BMI_FAILURE, c_int)
-    end select
-  end function get_value_ptr
+end function get_value_ptr
+
 
   !===================================================================
   !  C-callable get_var_size(name)
@@ -142,22 +152,38 @@ contains
   !  Returns number of elements, not bytes.
   !===================================================================
   function get_var_size(name_c) bind(C, name="get_var_size") result(out)
-    type(c_ptr), value :: name_c
-    integer(c_int)     :: out
+  use, intrinsic :: iso_c_binding, only: c_ptr, c_int, c_sizeof
+  use, intrinsic :: iso_fortran_env, only: real32
+  type(c_ptr), value :: name_c
+  integer(c_int)     :: out
 
-    character(len=:), allocatable :: name
-    integer :: n
+  character(len=:), allocatable :: name
+  character(len=:), allocatable :: key
+  integer :: nvals
+  real(real32) :: tmp32
 
-    call cstring_to_fortran(name_c, name)
+  call cstring_to_fortran(name_c, name)
 
-    if (.not. allocated(name)) then
-      out = 0_c_int
-      return
-    end if
+  if (.not. allocated(name)) then
+    out = 0_c_int
+    return
+  end if
 
-    n = get_var_size_from_bmi(trim(name))
-    out = int(n, c_int)
-  end function get_var_size
+  key = uppercase(trim(name))
+
+  select case (trim(key))
+  case ('ZS', 'WATERLEVEL', 'SURFACE_WATER__ELEVATION', &
+        'ZB', 'BEDLEVEL', 'LAND_SURFACE__ELEVATION', &
+        'DEPTH', 'WATERDEPTH', 'SURFACE_WATER__DEPTH')
+    nvals = get_active_size()
+    out = int(nvals * c_sizeof(tmp32), c_int)
+  case default
+    out = 0_c_int
+  end select
+
+  write(*,*) 'get_var_size name=', trim(key), ' nvals=', nvals, ' nbytes=', out
+
+end function get_var_size
 
   !===================================================================
   !  Helper: return element count using BMI metadata
@@ -179,6 +205,38 @@ contains
     if (itemsize <= 0) return
     n = nbytes / itemsize
   end function get_var_size_from_bmi
+
+function uppercase(s) result(out)
+  character(len=*), intent(in) :: s
+  character(len=len(s)) :: out
+  integer :: i, ich
+
+  out = s
+  do i = 1, len(s)
+    ich = iachar(out(i:i))
+    if (ich >= iachar('a') .and. ich <= iachar('z')) then
+      out(i:i) = achar(ich - 32)
+    end if
+  end do
+end function uppercase
+
+function get_active_size() result(n)
+  integer :: n
+  integer :: status
+  integer :: grid
+  integer :: grid_size
+
+  n = 0
+
+  status = M%get_var_grid('zb', grid)
+  if (status == BMI_SUCCESS) then
+    status = M%get_grid_size(grid, grid_size)
+    if (status == BMI_SUCCESS) then
+      n = grid_size
+      return
+    end if
+  end if
+end function get_active_size
 
   !===================================================================
   !  Helper: Convert C string (char*) -> allocatable Fortran string
