@@ -1,5 +1,8 @@
 module sfincs_snapwave
    !
+   use sfincs_log
+   use sfincs_error
+   !    
    implicit none
    !     
    integer                                   :: snapwave_no_nodes
@@ -11,8 +14,12 @@ module sfincs_snapwave
    real*4,    dimension(:),   allocatable    :: snapwave_depth
    real*4,    dimension(:),   allocatable    :: snapwave_H
    real*4,    dimension(:),   allocatable    :: snapwave_H_ig
+   real*4,    dimension(:),   allocatable    :: snapwave_Tp
+   real*4,    dimension(:),   allocatable    :: snapwave_Tp_ig   
    real*4,    dimension(:),   allocatable    :: snapwave_mean_direction
    real*4,    dimension(:),   allocatable    :: snapwave_directional_spreading
+   real*4,    dimension(:),   allocatable    :: snapwave_u10
+   real*4,    dimension(:),   allocatable    :: snapwave_u10dir   
    real*4,    dimension(:),   allocatable    :: snapwave_Fx
    real*4,    dimension(:),   allocatable    :: snapwave_Fy
    real*4,    dimension(:),   allocatable    :: snapwave_Dw
@@ -20,7 +27,6 @@ module sfincs_snapwave
    real*4,    dimension(:),   allocatable    :: snapwave_Dwig
    real*4,    dimension(:),   allocatable    :: snapwave_Dfig
    real*4,    dimension(:),   allocatable    :: snapwave_cg
-   real*4,    dimension(:),   allocatable    :: snapwave_Qb
    real*4,    dimension(:),   allocatable    :: snapwave_beta
    real*4,    dimension(:),   allocatable    :: snapwave_srcig
    real*4,    dimension(:),   allocatable    :: snapwave_alphaig   
@@ -28,6 +34,7 @@ module sfincs_snapwave
    integer*4, dimension(:),   allocatable    :: index_snapwave_in_sfincs
    integer*4, dimension(:),   allocatable    :: index_sfincs_in_snapwave
    integer*4, dimension(:),   allocatable    :: index_sw_in_qt ! used in sfincs_ncoutput (copy of index_snapwave_in_quadtree from snapwave_data)
+   real*4                                    :: snapwave_hsmean
    real*4                                    :: snapwave_tpmean
    real*4                                    :: snapwave_tpigmean   
    !
@@ -41,14 +48,55 @@ contains
    !
    implicit none
    !
-   integer :: ipsw, iq
    logical       :: crsgeo
    !
+   build_revision = '$Rev: svn 197-branch:SnapWave_IG' 
+   build_date     = '$Date: 2025-04-14'
+   !
+   call write_log('', 1)
+   call write_log('----------- Welcome to SnapWave ---------', 1)
+   call write_log('', 1)
+   call write_log('   @@@@@   @@  @@  @@@@@@  @@@@@@   @@@  ', 1)
+   call write_log('  @@@ @@@  @@@ @@  @@@@@@  @@@@@@   @@@  ', 1)
+   call write_log('  @@@      @@@ @@  @@  @@  @@  @@   @@@  ', 1)
+   call write_log('   @@@@@   @@@@@@  @@@@@@  @@@@@@   @@@  ', 1)
+   call write_log('      @@@  @@ @@@  @@  @@  @@            ', 1)
+   call write_log('  @@@ @@@  @@  @@  @@  @@  @@       @@@  ', 1)
+   call write_log('   @@@@@   @@   @  @@  @@  @@       @@@  ', 1)
+   call write_log('', 1)
+   call write_log('             .......:.......             ', 1)
+   call write_log('         ...:::::::::::::::::...         ', 1)
+   call write_log('      ..:::::::............::::::..      ', 1)
+   call write_log('    ..::::::.....:@@@@@@@@....:::::..    ', 1)
+   call write_log('   .::::::...~@@@@@@@@@@@@@@~..::::::.   ', 1)
+   call write_log('  .::::::..:@@@@@@@@@@@@@@@@@@:.::::::.  ', 1)
+   call write_log(' .:::::..:@@@@@@@@@@@@@@@@@@@@@:.::::::. ', 1)
+   call write_log('.::::..:@@@@@@@@@@@@@@^......:@@.:::::::.', 1)
+   call write_log('.::...:@@@@@@@@@@@@@@@.:::::..^^.:::::::.', 1)
+   call write_log('::.:@@@@@@@@@@@@@@@@@@..::::::..:::::::::', 1)
+   call write_log('..:@@@@@@@@@@@@@@@@@@@@^..............::.', 1)
+   call write_log('..:@@@@@@@@@@@@@@@@@@@@@@@^:..:~^~^~:..:.', 1)
+   call write_log(' .:@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@:. ', 1)
+   call write_log('  .@@~^~@@@@~^~@@@@~^~@@@@~^~@@@@~^~@@.  ', 1)
+   call write_log('   ...................................   ', 1)
+   call write_log('    ..:::::::::::::::::::::::::::::..    ', 1)
+   call write_log('      ..:::::::::::::::::::::::::..      ', 1)
+   call write_log('         ...:::::::::::::::::...         ', 1)
+   call write_log('             .......:.......             ', 1)
+   call write_log('', 1)
+   call write_log('-----------------------------------------', 1)   
+   call write_log('', 1)
+   call write_log('Build-Revision: '//trim(build_revision), 1)
+   call write_log('Build-Date: '//trim(build_date), 1)   
+   call write_log('', 1)
+   call write_log('------ Preparing model simulation --------', 1)
+   call write_log('', 1)   
+   !   
    ! Check whether SFINCS grid is spherical (T) or cartesian (F), and prescribe to SnapWave as variable 'sferic' -  spherical (1) or cartesian (0) grid
    if (crsgeo) then
       sferic  = 1 
-      write(*,*)'SnapWave: Input grid interpreted as spherical coordinates, sferic= ',sferic
-      
+      write(logstr,*)'SnapWave: Input grid interpreted as spherical coordinates, sferic= ',sferic     
+      call write_log(logstr, 0)   
    endif   
    !
    call read_snapwave_input()            ! Reads snapwave.inp
@@ -57,22 +105,66 @@ contains
    !
    call read_boundary_data()
    !
+   !call find_boundary_indices() ! > is already called in read_boundary_data()
+   !
+   call write_log('', 1)
+   !
    snapwave_no_nodes = no_nodes
    !
    allocate(snapwave_z(no_nodes))
    allocate(snapwave_depth(no_nodes))
-   allocate(snapwave_mask(no_nodes))   
+   allocate(snapwave_mask(no_nodes))  
+   allocate(snapwave_u10(no_nodes))   
+   allocate(snapwave_u10dir(no_nodes))      
    !
    snapwave_z     = zb
    snapwave_depth = 0.0
    !
+   if (wind) then
+      snapwave_u10 = 0.0
+      snapwave_u10dir = 0.0
+   endif
+   !
+   snapwave_hsmean = 0.0
    snapwave_tpmean = 0.0
-   snapwave_tpigmean = 0.0    
+   snapwave_tpigmean = 0.0   
    !   
    call find_matching_cells(index_quadtree_in_snapwave, index_snapwave_in_quadtree)
    !
    ! Copy final snapwave mask from snapwave_domain for output in sfincs_ncoutput
+   !
    snapwave_mask = msk   
+   !
+   call write_log('------------------------------------------', 1)
+   call write_log('SnapWave Processes', 1)
+   call write_log('------------------------------------------', 1)
+   if (igwaves) then
+      call write_log('SnapWave IG waves                  : yes', 1)
+   else   
+      call write_log('SnapWave IG waves                  : no', 1)
+   endif
+   if (iterative_srcig) then
+      call write_log('SnapWave implicit IG source term   : yes', 1)
+   else   
+      call write_log('SnapWave implicit IG source term   : no', 1)
+   endif
+   if (igherbers) then 
+      call write_log('SnapWave IG bc using Herbers       : yes', 1)
+   else   
+      call write_log('SnapWave IG bc using Herbers       : no', 1)
+   endif
+   if (wind) then
+      call write_log('SnapWave wind growth               : yes', 1)
+   else   
+      call write_log('SnapWave wind growth               : no', 1)
+   endif
+   if (vegetation) then
+      call write_log('SnapWave vegetation                : yes', 1)
+   else   
+      call write_log('SnapWave vegetation                : no', 1)
+   endif
+   !
+   call write_log('------------------------------------------', 1)
    !
    end subroutine
    
@@ -87,32 +179,108 @@ contains
    integer, dimension(snapwave_no_nodes),  intent(in) :: index_quadtree_in_snapwave
    integer, dimension(quadtree_nr_points), intent(in) :: index_snapwave_in_quadtree
    !
-   integer :: nm, n, m, ipsw, ipsf, iq
+   integer :: ipsw, ipsf, iq, ip, counter
    !
+   real*4  :: xsw, ysw, dstmin, dst, min_distance 
+   !
+   real*4 :: distances(np)
+   integer :: closest_index(1)
+   !
+   logical :: nearest_warning
+   !   
    allocate(index_sfincs_in_snapwave(snapwave_no_nodes))
    allocate(index_snapwave_in_sfincs(np))
    allocate(index_sw_in_qt(quadtree_nr_points))
    !
+   nearest_warning = .false.
+   !
    index_sfincs_in_snapwave = 0
    index_snapwave_in_sfincs = 0
    index_sw_in_qt = 0
+   counter = 0
+   distances = 0.0
+   min_distance = 0.0
    !
    ! Loop through SnapWave points
    !
    do ipsw = 1, snapwave_no_nodes
+      !
       iq   = index_quadtree_in_snapwave(ipsw)
       ipsf = index_sfincs_in_quadtree(iq)
+      !
+      if (ipsf == 0 ) then
+         !
+         ! SFINCS not active at this SnapWave node, so find the nearest SFINCS point
+         !
+         counter = counter + 1
+         !
+         nearest_warning = .true. ! to print warning to screen that 'extrapolation' is performed
+         !
+         if (snapwave_use_nearest) then 
+             !
+             xsw = quadtree_xz(iq)
+             ysw = quadtree_yz(iq)
+             !
+             dstmin = 1.0e6
+             !
+             ! Calculate the distance for each coordinate
+             !$omp parallel &
+             !$omp private ( ip, dst )
+             !$omp do
+             do ip = 1, np
+                 !
+                 dst = sqrt((z_xz(ip) - xsw)**2 + (z_yz(ip) - ysw)**2)
+                 !
+                 distances(ip) = dst
+                 !
+             enddo
+             !$omp end do         
+             !$omp end parallel             
+             !
+             ! Find the minimum distance
+             min_distance = minval(distances)         
+             !
+             if (min_distance < dstmin) then
+                 !
+                 ! Find the index of the minimum distance
+                 closest_index = minloc(distances)
+                 !
+                 ! To conform shapes
+                 ipsf = closest_index(1)
+                 !
+             endif       
+             !        
+         endif         
+      endif
+      !         
       index_sfincs_in_snapwave(ipsw) = ipsf
-      index_sw_in_qt(iq) = ipsw
-   enddo   
+      !
+      index_sw_in_qt(iq) = ipsw      
+      !
+   enddo             
    !
    ! Loop through SFINCS points
    !
    do ipsf = 1, np
+      !
       iq   = index_quadtree_in_sfincs(ipsf)
       ipsw = index_snapwave_in_quadtree(iq)
       index_snapwave_in_sfincs(ipsf) = ipsw
+      !
    enddo   
+   !
+   ! Print warning message
+   !
+   if (nearest_warning) then
+      if (snapwave_use_nearest) then
+          write(logstr,'(a,i0,a)')'SnapWave: Info   : ',counter,' SnapWave node(s) do not have a matching SFINCS point, so water depth and wind conditions from the nearest SFINCS point within 1000 km are used for SnapWave calculation '
+      else
+          write(logstr,'(a,i0,a)')'SnapWave: Info   : ',counter,' SnapWave node(s) do not have a matching SFINCS point, water level at these points is set to 0.0 '          
+      endif      
+      ! 
+      call write_log(logstr, 0)
+      !
+   endif   
    !
    end subroutine
 
@@ -128,9 +296,9 @@ contains
    integer  :: count_rate
    integer  :: count_max
    real     :: tloop
+   !
+   real*4   :: u10, u10dir
    !   
-   real*4,    dimension(snapwave_no_nodes)    :: zssw
-   real*4,    dimension(snapwave_no_cells, 4) :: hc
    real*4,    dimension(:), allocatable       :: fwx0
    real*4,    dimension(:), allocatable       :: fwy0
    real*4,    dimension(:), allocatable       :: dw0
@@ -138,12 +306,11 @@ contains
    real*4,    dimension(:), allocatable       :: dwig0
    real*4,    dimension(:), allocatable       :: dfig0   
    real*4,    dimension(:), allocatable       :: cg0   
-   real*4,    dimension(:), allocatable       :: qb0   
+   !real*4,    dimension(:), allocatable       :: qb0   
    real*4,    dimension(:), allocatable       :: beta0 
    real*4,    dimension(:), allocatable       :: srcig0      
    real*4,    dimension(:), allocatable       :: alphaig0   
-   integer   :: ip, ii, m, n, nm, nmu, idir
-   real*4    :: f
+   integer   :: ip, nm, nmu, idir
    real*8    :: t
    !
    call system_clock(count0, count_rate, count_max)
@@ -155,7 +322,7 @@ contains
    allocate(dwig0(np))
    allocate(dfig0(np))  
    allocate(cg0(np))  
-   allocate(qb0(np))   
+   !allocate(qb0(np))   
    allocate(beta0(np))   
    allocate(srcig0(np))      
    allocate(alphaig0(np))      
@@ -167,7 +334,7 @@ contains
    dwig0 = 0.0
    dfig0 = 0.0
    cg0 = 0.0
-   qb0 = 0.0
+   !qb0 = 0.0
    beta0 = 0.0
    srcig0 = 0.0
    alphaig0 = 0.0   
@@ -178,13 +345,14 @@ contains
       !
       ip = index_sfincs_in_snapwave(nm) ! matching index in SFINCS mesh
       !
-      if (ip>0) then
+      if (ip > 0) then
          !
          ! A matching SFINCS point is found
          !
+
          if (wavemaker) then
             !
-            snapwave_depth(nm) = max(zsm(ip) - snapwave_z(nm), 0.00001)      
+            snapwave_depth(nm) = max(zsm(ip) - snapwave_z(nm), 0.00001)
             !
          else   
             !
@@ -202,6 +370,47 @@ contains
       !
    enddo   
    !
+   ! Determine SnapWave wind
+   !
+   if (wind) then ! =We have wind inputs given to SFINCS
+      !
+      if (snapwavewind) then ! =We have windgrowth in SnapWave turned on 
+          !
+          do nm = 1, snapwave_no_nodes
+             !
+             ip = index_sfincs_in_snapwave(nm) ! matching index in SFINCS mesh
+             !
+             if (ip>0) then
+                !
+                ! A matching SFINCS point is found
+                !
+                ! Convert to umag & dir, as in ncoutput_update_his: 
+                !
+                u10 = sqrt(windu(ip)**2 + windv(ip)**2)
+                !
+                u10dir = atan2(windv(ip), windu(ip))*180/pi
+                !
+	            if (u10dir<0.0) u10dir = u10dir + 360.0
+                if (u10dir>360.0) u10dir = u10dir - 360.0    
+                !
+                snapwave_u10(nm) = max(u10, 0.0)     
+                snapwave_u10dir(nm) = u10dir / 180.0 * pi ! from nautical coming from in degrees to cartesian going to in radians
+                !
+             else
+                !
+                ! Use 0.0 wind speed and direction
+                !
+                snapwave_u10(nm) = 0.0
+                snapwave_u10dir(nm) = 0.0            
+                !
+             endif   
+             !
+          enddo   
+          !
+      endif
+      !
+   endif   
+   !
    call compute_snapwave(t)
    !
    do nm = 1, np
@@ -211,7 +420,9 @@ contains
       if (ip>0) then
          !
          hm0(nm)    = snapwave_H(ip)   
-         hm0_ig(nm) = snapwave_H_ig(ip)   
+         hm0_ig(nm) = snapwave_H_ig(ip) 
+         sw_tp(nm)    = snapwave_Tp(ip)         
+         sw_tp_ig(nm) = snapwave_Tp_ig(ip)         
          fwx0(nm)   = snapwave_Fx(ip)   
          fwy0(nm)   = snapwave_Fy(ip) 
          dw0(nm)    = snapwave_Dw(ip)   
@@ -219,12 +430,12 @@ contains
          dwig0(nm)  = snapwave_Dwig(ip)   
          dfig0(nm)  = snapwave_Dfig(ip)
          cg0(nm)    = snapwave_cg(ip)
-         qb0(nm)    = snapwave_Qb(ip)
+         !qb0(nm)    = snapwave_Qb(ip)
          beta0(nm)  = snapwave_beta(ip)
          srcig0(nm) = snapwave_srcig(ip)
          alphaig0(nm) = snapwave_alphaig(ip)
          if (store_wave_direction) then
-            mean_wave_direction(nm)        = 270.0 - snapwave_mean_direction(ip)*180/pi   
+            mean_wave_direction(nm) = snapwave_mean_direction(ip)             
             wave_directional_spreading(nm) = snapwave_directional_spreading(ip)*180/pi   
          endif
          !
@@ -234,6 +445,8 @@ contains
          !
          hm0(nm)    = 0.0
          hm0_ig(nm) = 0.0
+         sw_tp(nm)  = 0.0
+         sw_tp_ig(nm) = 0.0         
          fwx0(nm)   = 0.0
          fwy0(nm)   = 0.0   
          dw0(nm)    = 0.0
@@ -241,7 +454,7 @@ contains
          dwig0(nm)  = 0.0
          dfig0(nm)  = 0.0
          cg0(nm)    = 0.0
-         qb0(nm)    = 0.0
+         !qb0(nm)    = 0.0
          beta0(nm)  = 0.0
          srcig0(nm) = 0.0
          alphaig0(nm) = 0.0         
@@ -261,7 +474,7 @@ contains
          dwig(nm)       = dwig0(nm)
          dfig(nm)       = dfig0(nm)
          cg(nm)         = cg0(nm)   
-         qb(nm)         = qb0(nm)         
+         !qb(nm)         = qb0(nm)         
          betamean(nm)   = beta0(nm)         
          srcig(nm)      = srcig0(nm)         
          alphaig(nm)    = alphaig0(nm)                  
@@ -270,8 +483,8 @@ contains
       !
    enddo   
    !   
-   hm0 = hm0*sqrt(2.0)
-   hm0_ig = hm0_ig*sqrt(2.0)
+   hm0 = hm0 * sqrt(2.0)
+   hm0_ig = hm0_ig * sqrt(2.0)
    !
    do ip = 1, npuv
       !
@@ -295,11 +508,9 @@ contains
          !         
       endif   
       !
-!      fwuv = 0.0
-      !
    enddo
    !
-   !$acc update device(fwuv), async(1)
+   !$acc update device(fwuv)
    !
    call system_clock(count1, count_rate, count_max)
    tloop = tloop + 1.0*(count1 - count0)/count_rate
@@ -314,10 +525,14 @@ contains
    use snapwave_boundaries
    !
    real*8    :: t
+   integer   :: k
    ! 
    depth = snapwave_depth
    !
    zb = snapwave_z   
+   !
+   u10 = snapwave_u10
+   u10dir = snapwave_u10dir   
    !   
    ! TL: we use depth now in boundary conditions for Herbers bc determination of Hm0ig, in this order we use updated values of depth through SFINCS
    !
@@ -327,21 +542,41 @@ contains
    !
    snapwave_H                     = H
    snapwave_H_ig                  = H_ig
-   snapwave_mean_direction        = thetam
+   snapwave_Tp                    = Tp
+   snapwave_Tp_ig                 = Tp_ig   
+   snapwave_mean_direction        = modulo(270.0 - thetam * 180 / pi + 360.0, 360.0)
    snapwave_directional_spreading = thetam  ! TL: CORRECT? > is not spreading but mean direction?
-   snapwave_Fx                    = Fx
-   snapwave_Fy                    = Fy 
    snapwave_Dw                    = Dw
    snapwave_Df                    = Df
    snapwave_Dwig                  = Dw_ig
    snapwave_Dfig                  = Df_ig
    snapwave_cg                    = cg
-   snapwave_Qb                    = Qb
    snapwave_beta                  = beta
    snapwave_srcig                 = srcig
    snapwave_alphaig               = alphaig   
    !
+   ! Convert wave force to correct unit [Dw/C] as expected by SFINCS, assumed to be piecewise (seems to work)
+   snapwave_Fx                    = Fx * rho * depth
+   snapwave_Fy                    = Fy * rho * depth
+   !
+   ! Loop over points and set Tp, cg, direction, spreading to 0 where H and/or H_ig are zero
+   ! TL: needed because e.g. Tp is set to Tpini initially, so shows values even if cell remains dry with H=0
+   do k = 1, no_nodes
+       if (snapwave_H(k) <= 0.0) then
+           snapwave_Tp(k) = 0.0
+           snapwave_mean_direction(k) = 0.0
+           snapwave_directional_spreading(k) = 0.0
+           snapwave_cg(k) = 0.0
+       endif
+       !
+       if (snapwave_H_ig(k) <= 0.0) then
+           snapwave_Tp_ig(k) = 0.0        
+       endif       
+   enddo   
+   !
    ! Wave periods from SnapWave, used in e.g. wavemakers - TL: moved behind call update_boundary_conditions & compute_wave_field so values at first timestep are not 0
+   !
+   snapwave_hsmean = hsmean_bwv
    snapwave_tpmean = tpmean_bwv
    !
    ! Do quick check whether incoming Tpig value seems realistic, before using it:
@@ -350,9 +585,12 @@ contains
        snapwave_tpigmean = tpmean_bwv_ig      
        !   
        if (snapwave_tpigmean < 10.0) then
-	       write(*,*)'DEBUG SFINCS_SnapWave - incoming tp for IG wave at wavemaker might be unrealistically small! value: ',snapwave_tpigmean
+           ! These warnings should not occur here
+	       write(logstr,*)'DEBUG SFINCS_SnapWave - incoming tp for IG wave at wavemaker might be unrealistically small! value: ',snapwave_tpigmean
+           call write_log(logstr, 0)           
        elseif (snapwave_tpigmean > 250.0) then
-	       write(*,*)'DEBUG SFINCS_SnapWave - incoming tp for IG wave at wavemaker might be unrealistically large! value: ',snapwave_tpigmean
+	       write(logstr,*)'DEBUG SFINCS_SnapWave - incoming tp for IG wave at wavemaker might be unrealistically large! value: ',snapwave_tpigmean
+           call write_log(logstr, 0)   
        endif	 
    endif
    ! TL: NOTE - in first timestep run of SnapWave tp = 0, therefore excluded that case from the check     
@@ -369,88 +607,127 @@ contains
    !
    implicit none
    !
-   integer :: irestart
-   !
    open(500, file='sfincs.inp')   
    !
    ! Input section
    !
-   call read_real_input(500,'snapwave_gamma',gamma,0.7)
-   call read_real_input(500,'snapwave_alpha',snapwave_alpha,1.0)
-   call read_real_input(500,'snapwave_hmin',hmin,0.1)
-   call read_real_input(500,'snapwave_fw',fw0,0.01)
-   call read_real_input(500,'snapwave_fwig',fw0_ig,0.015)
-   call read_real_input(500,'snapwave_dt',dt,36000.0)
-   call read_real_input(500,'snapwave_tol',tol,10.0)
-   call read_real_input(500,'snapwave_dtheta',dtheta,10.0)
-   call read_real_input(500,'snapwave_crit',crit,0.01)
-   call read_int_input(500,'snapwave_nrsweeps',nr_sweeps,4)
-   call read_int_input(500,'snapwave_baldock_opt',baldock_opt,1)     
-   call read_real_input(500,'snapwave_baldock_ratio',baldock_ratio,0.2)
-   call read_real_input(500,'rgh_lev_land',rghlevland,0.0)
-   call read_real_input(500,'snapwave_fw_ratio',fwratio,1.0)
-   call read_real_input(500,'snapwave_fwig_ratio',fwigratio,1.0)   
+   call read_real_input(500, 'snapwave_gamma', gamma, 0.7)
+   call read_real_input(500, 'snapwave_gammax', gammax, 2.0) ! MvO - Changed default gammax from 0.6 to 2.0  
+   call read_real_input(500, 'snapwave_alpha', alpha, 1.0)
+   call read_real_input(500, 'snapwave_hmin', hmin, 0.1)
+   call read_real_input(500, 'snapwave_fw', fw0, 0.01)
+   call read_real_input(500, 'snapwave_fwig', fw0_ig, 0.015)
+   call read_real_input(500, 'snapwave_dt', dt, 36000.0)
+   call read_real_input(500, 'snapwave_tol', tol, 1000.0)
+   call read_real_input(500, 'snapwave_dtheta', dtheta, 10.0)
+   call read_real_input(500, 'snapwave_crit', crit, 0.001) !TL: Old default was 0.01
+   call read_int_input(500,  'snapwave_nrsweeps', nr_sweeps, 4)
+   call read_int_input(500,  'snapwave_niter', niter, 10)
+   call read_int_input(500,  'snapwave_baldock_opt', baldock_opt, 1)     
+   call read_real_input(500, 'snapwave_baldock_ratio', baldock_ratio, 0.2)
+   call read_real_input(500, 'rgh_lev_land', rghlevland, 0.0)
+   call read_real_input(500, 'snapwave_fw_ratio', fwratio, 1.0)
+   call read_real_input(500, 'snapwave_fwig_ratio', fwigratio, 1.0)
+   call read_real_input(500, 'snapwave_Tpini', Tpini, 1.0)
+   call read_int_input (500, 'snapwave_mwind', mwind, 2)      
+   call read_real_input(500, 'snapwave_sigmin', sigmin, 8.0 * atan(1.0) / 25.0)
+   call read_real_input(500, 'snapwave_sigmax', sigmax, 8.0 * atan(1.0) / 1.0)   
+   call read_int_input (500, 'snapwave_jadcgdx', jadcgdx, 1)
+   call read_real_input(500, 'snapwave_c_dispT', c_dispT, 1.0)   
+   call read_real_input(500, 'snapwave_sector', sector, 180.0)
    !
-   ! Settings related to IG waves:   
-   call read_int_input(500,'snapwave_igwaves',igwaves_opt,1)   
-   call read_real_input(500,'snapwave_alpha_ig',snapwave_alpha_ig,1.0)   
-   call read_real_input(500,'snapwave_gammaig',gamma_ig,0.2)   
-   call read_real_input(500,'snapwave_shinc2ig',shinc2ig,1.0)                   ! Ratio of how much of the calculated IG wave source term, is subtracted from the incident wave energy (0-1, 1=default=all energy as sink)
-   call read_real_input(500,'snapwave_alphaigfac',alphaigfac,1.0)               ! Multiplication factor for IG shoaling source/sink term         
-   call read_real_input(500,'snapwave_baldock_ratio_ig',baldock_ratio_ig,0.2)       
-   call read_int_input(500,'snapwave_ig_opt',ig_opt,1)     
-   call read_int_input(500,'snapwave_iterative_srcig',iterative_srcig,1)        ! Option whether to calculate IG source/sink term in iterative lower (better, but potentially slower, 1=default), or effectively based on previous timestep (faster, potential mismatch, =0)
+   ! Settings related to IG waves
    !
-   ! IG boundary conditions options:
-   call read_int_input(500,'snapwave_use_herbers',herbers_opt,1)    ! Choice whether you want IG Hm0&Tp be calculated by herbers (=1, default), or want to specify user defined values (0> then snapwave_eeinc2ig & snapwave_Tinc2ig are used) 
-   call read_int_input(500,'snapwave_tpig_opt',tpig_opt,1) ! IG wave period option based on Herbers calculated spectrum, only used if snapwave_use_herbers = 1. Options are: 1=Tm01 (default), 2=Tpsmooth, 3=Tp, 4=Tm-1,0   
-   call read_real_input(500,'snapwave_jonswapgamma',jonswapgam,3.3)  ! JONSWAP gamma value for determination offshore spectrum and IG wave conditions using Herbers, default=3.3, only used if snapwave_use_herbers = 1   
-   call read_real_input(500,'snapwave_eeinc2ig',eeinc2ig,0.01)  ! Only used if snapwave_use_herbers = 0       
-   call read_real_input(500,'snapwave_Tinc2ig',Tinc2ig,7.0)  ! Only used if snapwave_use_herbers = 0
-
+   call read_int_input(500, 'snapwave_igwaves', igwaves_opt, 1)                  ! Compute IG waves (1=default), or not (0)
+   call read_real_input(500, 'snapwave_alpha_ig', alpha_ig, 1.0)                 ! TODO choose whether snapwave_alphaig or snapwave_gamma_ig  
+   call read_real_input(500, 'snapwave_gammaig', gamma_ig, 0.2)                  ! Wave breaking parameter for IG waves, default=0.2
+   call read_real_input(500, 'snapwave_shinc2ig', shinc2ig, 1.0)                 ! Ratio of how much of the calculated IG wave source term, is subtracted from the incident wave energy (0-1, 1=default=all energy as sink)
+   call read_real_input(500, 'snapwave_alphaigfac', alphaigfac, 1.0)             ! Multiplication factor for IG shoaling source/sink term
+   call read_real_input(500, 'snapwave_baldock_ratio_ig', baldock_ratio_ig, 0.2) ! ! option controlling from what depth wave breaking should take place for IG waves, default baldock_ratio_ig=0.2    
+   call read_int_input(500, 'snapwave_ig_opt', ig_opt, 1)                        ! option of IG wave settings (1 = default = conservative shoaling based dSxx as in Leijnse et al. 2024)   
+   call read_int_input(500, 'snapwave_iterative_srcig', iterative_srcig_opt, 0)  ! Option whether to calculate IG source/sink term in iterative lower (better, but potentially slower, 1), or effectively based on previous timestep (faster, potential mismatch, =0=default)
+   !
+   ! IG boundary conditions options
+   !
+   call read_int_input(500, 'snapwave_use_herbers', herbers_opt, 1)   ! Choice whether you want IG Hm0&Tp be calculated by herbers (=1, default), or want to specify user defined values (0> then snapwave_eeinc2ig & snapwave_Tinc2ig are used) 
+   call read_int_input(500, 'snapwave_tpig_opt', tpig_opt, 1)         ! IG wave period option based on Herbers calculated spectrum, only used if snapwave_use_herbers = 1. Options are: 1=Tm01 (default), 2=Tpsmooth, 3=Tp, 4=Tm-1,0   
+   call read_real_input(500, 'snapwave_jonswapgamma',jonswapgam, 3.3) ! JONSWAP gamma value for determination offshore spectrum and IG wave conditions using Herbers, default=3.3, only used if snapwave_use_herbers = 1   
+   call read_real_input(500, 'snapwave_eeinc2ig', eeinc2ig, 0.01)    ! Only used if snapwave_use_herbers = 0       
+   call read_real_input(500, 'snapwave_Tinc2ig', Tinc2ig, 7.0)        ! Only used if snapwave_use_herbers = 0
+   !
+   ! Wind
+   !
+   call read_int_input(500,'snapwave_wind',wind_opt,0)   ! Flag whether to include windgrowth in SnapWave (1) or not (0, default)
+   !
+   ! Vegetation input
+   !
+   call read_int_input(500, 'vegetation', vegetation_opt, 0)
    !
    ! Input files
-   call read_char_input(500,'snapwave_jonswapfile',jonswapfile,'')
-   call read_char_input(500,'snapwave_bndfile',bndfile,'')
-   call read_char_input(500,'snapwave_encfile',encfile,'')
-   call read_char_input(500,'snapwave_bhsfile',bhsfile,'')
-   call read_char_input(500,'snapwave_btpfile',btpfile,'')
-   call read_char_input(500,'snapwave_bwdfile',bwdfile,'')
-   call read_char_input(500,'snapwave_bdsfile',bdsfile,'') 
-   call read_char_input(500,'snapwave_upwfile',upwfile,'snapwave.upw')
-   call read_char_input(500,'snapwave_mskfile',mskfile,'')
-   call read_char_input(500,'snapwave_depfile',depfile,'none')   
-   call read_char_input(500,'snapwave_ncfile', gridfile,'snapwave_net.nc')   
-   call read_char_input(500,'netsnapwavefile',netsnapwavefile,'')
-   call read_char_input(500,'tref',trefstr,'20000101 000000')   ! Read again > needed in sfincs_ncinput.F90
-   
+   !
+   call read_char_input(500, 'snapwave_jonswapfile', snapwave_jonswapfile, 'none')
+   call read_char_input(500, 'snapwave_bndfile', snapwave_bndfile, 'none')
+   call read_char_input(500, 'snapwave_encfile', snapwave_encfile, 'none')
+   call read_char_input(500, 'snapwave_bhsfile', snapwave_bhsfile, 'none')
+   call read_char_input(500, 'snapwave_btpfile', snapwave_btpfile, 'none')
+   call read_char_input(500, 'snapwave_bwdfile', snapwave_bwdfile, 'none')
+   call read_char_input(500, 'snapwave_bdsfile', snapwave_bdsfile,'none') 
+   call read_char_input(500, 'snapwave_upwfile', upwfile, 'snapwave.upw')
+   call read_char_input(500, 'snapwave_mskfile', mskfile, 'none')
+   call read_char_input(500, 'snapwave_depfile', depfile, 'none')   
+   call read_char_input(500, 'snapwave_ncfile',  gridfile, 'snapwave_net.nc')   
+   call read_char_input(500, 'netsnapwavefile', netsnapwavefile, 'none')
+   call read_char_input(500, 'tref', trefstr, '20000101 000000')   ! Read again > needed in sfincs_ncinput.F90   
    !
    close(500)
    !
    igwaves          = .true.
+   igherbers        = .false.
+   iterative_srcig  = .false.   
+   !
    if (igwaves_opt==0) then
+      !
       igwaves       = .false.
-      write(*,*)'SnapWave: IG waves turned OFF!'
+      !
    else
-      write(*,*)'SnapWave: IG waves turned ON!'
+      ! 
+      if (iterative_srcig_opt==1) then
+         iterative_srcig = .true.
+      endif      
+      !
+      if (herbers_opt==0) then
+         !
+         write(logstr,*)'SnapWave: IG bc using use eeinc2ig= ',eeinc2ig,' and snapwave_Tinc2ig= ',Tinc2ig
+         call write_log(logstr, 0)         
+         !
+      else
+         !
+         igherbers     = .true.          
+         !
+      endif
+      !
    endif
    !
-   igherbers        = .true. 
-   if (herbers_opt==0) then
-      igherbers     = .false.
-      write(*,*)'SnapWave: IG bc determination using Herbers turned OFF! --> Use eeinc2ig= ',eeinc2ig,' and snapwave_Tinc2ig= ',Tinc2ig
-   else
-      write(*,*)'SnapWave: IG bc determination using Herbers turned ON!'
+   wind = .true.
+   if (wind_opt==0) then
+      wind = .false.
+   endif   
+   !
+   vegetation = .true.
+   !
+   if (vegetation_opt == 0) then
+      vegetation = .false.
    endif   
    !
    if (nr_sweeps /= 1 .and. nr_sweeps /= 4) then
+      !
       nr_sweeps = 4
-      write(*,*)'SnapWave: Warning! nr_sweeps must be 1 or 4! Now set to 4.'
-   endif   
+      call write_log('SnapWave: Warning! nr_sweeps must be 1 or 4! Now set to 4.', 1)
+      !
+   endif
    ! 
    restart           = .true.
    coupled_to_sfincs = .true.
-   bzsfile           = ''
    !
    end subroutine 
 
@@ -465,20 +742,28 @@ contains
    integer, intent(in)      :: fileid
    real*4, intent(out)      :: value
    real*4, intent(in)       :: default
-   integer j,stat
+   integer j,stat,ilen
    !
    value = default
+   !
    rewind(fileid)   
+   !
    do while(.true.)
+      !
       read(fileid,'(a)',iostat = stat)line
-      if (stat<0) exit
-      j=index(line,'=')      
-      keystr = trim(line(1:j-1))
+      !
+      if (stat==-1) exit
+      !
+      call read_line(line, keystr, valstr)
+      !
       if (trim(keystr)==trim(keyword)) then
-         valstr = trim(line(j+1:256))
-         read(valstr,*)value
+         !
+         read(valstr,*)value         
+         !
          exit
+         !
       endif
+      !
    enddo 
    !
    end  subroutine  
@@ -493,22 +778,30 @@ contains
    integer, intent(in)      :: nr
    real*4, dimension(:), intent(out), allocatable :: value
    real*4, intent(in)       :: default
-   integer j,stat, m
+   integer j,stat, m,ilen
    !
    allocate(value(nr))
    !
    value = default
+   !
    rewind(fileid)   
+   !
    do while(.true.)
+      !
       read(fileid,'(a)',iostat = stat)line
-      if (stat<0) exit
-      j=index(line,'=')      
-      keystr = trim(line(1:j-1))
+      !
+      if (stat==-1) exit
+      !
+      call read_line(line, keystr, valstr)
+      !
       if (trim(keystr)==trim(keyword)) then
-         valstr = trim(line(j+1:256))
+         !
          read(valstr,*)(value(m), m = 1, nr)
+         !
          exit
+         !
       endif
+      !
    enddo 
    !
    end  subroutine  
@@ -523,20 +816,28 @@ contains
    integer, intent(in)      :: fileid
    integer, intent(out)     :: value
    integer, intent(in)      :: default
-   integer j,stat
+   integer j,stat,ilen
    !
    value = default
+   !
    rewind(fileid)   
+   !
    do while(.true.)
+      !
       read(fileid,'(a)',iostat = stat)line
-      if (stat<0) exit
-      j=index(line,'=')      
-      keystr = trim(line(1:j-1))
+      !
+      if (stat==-1) exit
+      !
+      call read_line(line, keystr, valstr)
+      !
       if (trim(keystr)==trim(keyword)) then
-         valstr = trim(line(j+1:256))
+         !
          read(valstr,*)value         
+         !
          exit
+         !
       endif
+      !
    enddo 
    !
    end subroutine
@@ -545,28 +846,187 @@ contains
    subroutine read_char_input(fileid,keyword,value,default)
    !
    character(*), intent(in)  :: keyword
+   character(len=256)        :: keystr0
    character(len=256)        :: keystr
    character(len=256)        :: valstr
    character(len=256)        :: line
    integer, intent(in)       :: fileid
    character(*), intent(in)  :: default
    character(*), intent(out) :: value
-   integer j,stat
+   integer j,stat,ilen,jn
    !
    value = default
+   !
    rewind(fileid)   
+   !
    do while(.true.)
+      !
       read(fileid,'(a)',iostat = stat)line
-      if (stat<0) exit
-      j=index(line,'=')      
-      keystr = trim(line(1:j-1))
+      !
+      if (stat==-1) exit
+      !
+      call read_line(line, keystr, valstr)
+      !
       if (trim(keystr)==trim(keyword)) then
-         valstr = adjustl(trim(line(j+1:256)))
+         !
          value = valstr
+         !
          exit
+         !
       endif
+      !
    enddo 
    !
    end subroutine 
+
+   subroutine read_logical_input(fileid,keyword,value,default)
+   !
+   character(*), intent(in)  :: keyword
+   character(len=256)        :: keystr0
+   character(len=256)        :: keystr
+   character(len=256)        :: valstr
+   character(len=256)        :: line
+   integer, intent(in)       :: fileid
+   logical, intent(in)       :: default
+   logical, intent(out)      :: value
+   integer j,stat,ilen
+   !
+   value = default
+   !
+   rewind(fileid)   
+   !
+   do while(.true.)
+      !
+      read(fileid,'(a)',iostat = stat)line
+      !
+      if (stat==-1) exit
+      !
+      call read_line(line, keystr, valstr)
+      !
+      if (trim(keystr)==trim(keyword)) then
+         !
+         if (valstr(1:1) == '1' .or. valstr(1:1) == 'y' .or. valstr(1:1) == 'Y' .or. valstr(1:1) == 't' .or. valstr(1:1) == 'T') then
+            value = .true.
+         else
+            value = .false.
+         endif 
+         !
+         exit
+         !
+      endif
+      !
+   enddo 
+   !
+   end subroutine 
+
+   subroutine read_line(line0, keystr, valstr)
+   !
+   ! Reads line from input file, returns keyword and value strings
+   !
+   character(*), intent(in)  :: line0
+   character(len=256)        :: line
+   character(*), intent(out) :: keystr
+   character(*), intent(out) :: valstr
+   integer j, ilen, jn
+   !
+   keystr = ''
+   valstr = '' 
+   !
+   ! Change tabs into spaces.
+   !
+   call notabs(line0, line, ilen)
+   !
+   ! Look for line ending character. Remove it if it exists.
+   !
+   jn = index(line, '\r')      
+   !
+   if (jn > 0) then
+      !
+      ! New line character detected (probably sfincs.inp with windows line endings, running in linux)
+      !
+      line = line(1 : jn - 1)            
+      ! 
+   endif
+   !
+   ! Remove leading and trailing spaces.
+   !
+   line = trim(line)
+   !
+   if (line(1:1) == '#' .or. line(1:1) == '!' .or. line(1:1) == '@') return
+   !
+   ! Find "="
+   !
+   j  = index(line, '=')
+   !
+   if (j == 0) return
+   !
+   keystr = trim(line(1:j-1))
+   !
+   valstr = trim(line(j+1:))
+   !
+   ! Remove comments
+   !
+   jn = index(valstr, '#')
+   !
+   if (jn > 0) then
+      !
+      valstr = trim(valstr(1 : jn - 1)) 
+      ! 
+   endif
+   !
+   valstr = adjustl(trim(valstr))
+   !
+   end subroutine 
+
+
+   subroutine notabs(INSTR,OUTSTR,ILEN)
+   ! @(#) convert tabs in input to spaces in output while maintaining columns, assuming a tab is set every 8 characters
+   !
+   ! USES:
+   !       It is often useful to expand tabs in input files to simplify further processing such as tokenizing an input line.
+   !       Some FORTRAN compilers hate tabs in input files; some printers; some editors will have problems with tabs
+   ! AUTHOR:
+   !       John S. Urban
+   !
+   ! SEE ALSO: 
+   !       GNU/Unix commands expand(1) and unexpand(1) 
+   !
+   use ISO_FORTRAN_ENV, only : ERROR_UNIT     ! get unit for standard error. if not supported yet,  define ERROR_UNIT for your system (typically 0)
+   character(len=*),intent(in)   :: INSTR     ! input line to scan for tab characters
+   character(len=*),intent(out)  :: OUTSTR    ! tab-expanded version of INSTR produced
+   integer,intent(out)           :: ILEN      ! column position of last character put into output string
+
+   integer,parameter             :: TABSIZE=8 ! assume a tab stop is set every 8th column
+   character(len=1)              :: c         ! character read from stdin
+   integer                       :: ipos      ! position in OUTSTR to put next character of INSTR
+   integer                       :: lenin     ! length of input string trimmed of trailing spaces
+   integer                       :: lenout    ! number of characters output string can hold
+   integer                       :: i10       ! counter that advances thru input string INSTR one character at a time
+   !   
+   IPOS=1                                  ! where to put next character in output string OUTSTR
+   lenin=len(INSTR)                        ! length of character variable INSTR
+   lenin=len_trim(INSTR(1:lenin))          ! length of INSTR trimmed of trailing spaces
+   lenout=len(OUTSTR)                      ! number of characters output string OUTSTR can hold
+   OUTSTR=" "                              ! this SHOULD blank-fill string, a buggy machine required a loop to set all characters
+   !
+   do i10=1,lenin                          ! look through input string one character at a time
+      c=INSTR(i10:i10)
+      if(ichar(c) == 9)then                ! test if character is a tab (ADE (ASCII Decimal Equivalent) of tab character is 9)
+         IPOS = IPOS + (TABSIZE - (mod(IPOS-1,TABSIZE)))
+      else                                 ! c is anything else other than a tab insert it in output string
+         if(IPOS > lenout)then
+            write(ERROR_UNIT,*)"*notabs* output string overflow"
+            exit
+         else
+            OUTSTR(IPOS:IPOS)=c
+            IPOS=IPOS+1
+         endif
+      endif
+   enddo
+   !
+   ILEN=len_trim(OUTSTR(:IPOS))  ! trim trailing spaces
+   return
+   !
+   end subroutine notabs
    
 end module
