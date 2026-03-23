@@ -11,10 +11,12 @@ module sfincs_bmi2
   use sfincs_data, only: &
       np, npuv, t0, t1, &
       zs, zb, q, uv, zsmax, z_volume, &
+      subgrid, subgrid_z_zmin, subgrid_z_zmax, subgrid_z_dep, subgrid_z_volmax, &
       qext, prcp, windu, windv, patm, uorb, &
       z_xz, z_yz, &
       uv_index_z_nm, uv_index_z_nmu, &
-      kcs, z_flags_iref, uv_flags_dir, uv_flags_type
+      kcs, z_flags_iref, uv_flags_dir, uv_flags_type, &
+      cosrot, sinrot, z_index_uv_md, z_index_uv_mu, z_index_uv_nd, z_index_uv_nu
 
   use sfincs_lib, only: sfincs_initialize, sfincs_update, sfincs_finalize, t, dt
 
@@ -27,6 +29,8 @@ module sfincs_bmi2
   character(len=*), parameter :: VAR_ZB      = 'zb'
   character(len=*), parameter :: VAR_ZS      = 'zs'
   character(len=*), parameter :: VAR_Q       = 'q'
+  character(len=*), parameter :: VAR_U       = 'u'
+  character(len=*), parameter :: VAR_V       = 'v'
   character(len=*), parameter :: VAR_UV      = 'uv'
   character(len=*), parameter :: VAR_ZSMAX   = 'zsmax'
   character(len=*), parameter :: VAR_ZVOL    = 'z_volume'
@@ -252,6 +256,9 @@ contains
     integer :: status
     integer :: ierr
 
+    write(*,*) 'DEBUG: entering sfincs_bmi_finalize'
+    flush(6)
+
     if (.not. this%is_initialized) then
       status = BMI_SUCCESS
       return
@@ -266,6 +273,10 @@ contains
     else
       status = BMI_SUCCESS
     end if
+
+    write(*,*) 'DEBUG: leaving sfincs_bmi_finalize'
+    flush(6)
+
   end function sfincs_bmi_finalize
 
   function sfincs_bmi_get_component_name(this, name) result(status)
@@ -394,7 +405,7 @@ contains
     case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZVOL)
       type = 'double precision'
       status = BMI_SUCCESS
-    case (VAR_Q, VAR_ZB, VAR_UV, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
+    case (VAR_ZB, VAR_Q, VAR_UV, VAR_U, VAR_V, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
           VAR_Z_XZ, VAR_Z_YZ)
       type = 'real'
       status = BMI_SUCCESS
@@ -423,7 +434,7 @@ contains
     case (VAR_Q, VAR_QEXT)
       units = 'm3 s-1'
       status = BMI_SUCCESS
-    case (VAR_UV, VAR_WINDU, VAR_WINDV, VAR_UORB)
+    case (VAR_UV, VAR_U, VAR_V, VAR_WINDU, VAR_WINDV, VAR_UORB)
       units = 'm s-1'
       status = BMI_SUCCESS
     case (VAR_PRCP)
@@ -457,7 +468,7 @@ contains
     case (VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZVOL)
       size = 8
       status = BMI_SUCCESS
-    case (VAR_Q, VAR_ZB, VAR_UV, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
+    case (VAR_Q, VAR_ZB, VAR_UV, VAR_U, VAR_V, VAR_ZSMAX, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, VAR_PATM, VAR_UORB, &
           VAR_Z_XZ, VAR_Z_YZ)
       size = 4
       status = BMI_SUCCESS
@@ -486,7 +497,7 @@ contains
 
     select case (trim(cname))
     case (VAR_ZS, VAR_ZB, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
-          VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF)
+          VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF, VAR_U, VAR_V)
       n = np
     case (VAR_Q, VAR_UV, VAR_UV_NM, VAR_UV_NMU, VAR_UV_DIR, VAR_UV_TYPE)
       n = npuv
@@ -511,7 +522,7 @@ function sfincs_bmi_get_var_location(this, name, location) result(status)
 
   select case (trim(cname))
   case (VAR_ZB, VAR_ZS, VAR_ETA2, VAR_TROUTE_ETA2, VAR_ZSMAX, VAR_ZVOL, VAR_QEXT, VAR_PRCP, VAR_WINDU, VAR_WINDV, &
-        VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF)
+        VAR_PATM, VAR_UORB, VAR_Z_XZ, VAR_Z_YZ, VAR_KCS, VAR_Z_IREF, VAR_U, VAR_V)
     location = 'node'
     status = BMI_SUCCESS
   case (VAR_Q, VAR_UV, VAR_UV_NM, VAR_UV_NMU, VAR_UV_DIR, VAR_UV_TYPE)
@@ -740,7 +751,8 @@ function sfincs_bmi_get_value_float(this, name, dest) result(status)
   real(real32),      intent(inout) :: dest(:)
   integer :: status
   character(len=:), allocatable :: cname
-  integer :: i
+  integer :: i, nmd1, nmu1, ndm1, num1
+  real(real32) :: uz, vz
 
   cname = canon_var_name(name)
 
@@ -753,19 +765,43 @@ function sfincs_bmi_get_value_float(this, name, dest) result(status)
     status = BMI_SUCCESS
 
   case (VAR_ZB)
+    write(*,*) 'DEBUG VAR_ZB: np=', np
+    write(*,*) 'DEBUG VAR_ZB: subgrid=', subgrid
+    write(*,*) 'DEBUG VAR_ZB: allocated(zb)=', allocated(zb)
+    if (allocated(zb)) then
+      write(*,*) 'DEBUG VAR_ZB: lbound(zb,1)=', lbound(zb,1), ' ubound(zb,1)=', ubound(zb,1)
+    end if
+    write(*,*) 'DEBUG VAR_ZB: allocated(subgrid_z_zmin)=', allocated(subgrid_z_zmin)
+    if (allocated(subgrid_z_zmin)) then
+      write(*,*) 'DEBUG VAR_ZB: lbound(subgrid_z_zmin,1)=', lbound(subgrid_z_zmin,1), &
+                 ' ubound(subgrid_z_zmin,1)=', ubound(subgrid_z_zmin,1)
+    end if
+
     if (size(dest) < np) then
-      status = BMI_FAILURE; return
+      write(*,*) 'DEBUG VAR_ZB: dest too small, size(dest)=', size(dest), ' np=', np
+      status = BMI_FAILURE
+      return
     end if
-    dest(1:np) = zb(1:np)
 
-    status = BMI_SUCCESS
-
-  case (VAR_Q)
-    if (size(dest) < npuv) then
-      status = BMI_FAILURE; return
+    if (subgrid) then
+      if (.not. allocated(subgrid_z_zmin)) then
+        write(*,*) 'DEBUG VAR_ZB: subgrid_z_zmin not allocated'
+        status = BMI_FAILURE
+        return
+      end if
+      dest(1:np) = real(subgrid_z_zmin(1:np), kind=real32)
+      write(*,*) 'DEBUG VAR_ZB: returned subgrid_z_zmin'
+      status = BMI_SUCCESS
+    else
+      if (.not. allocated(zb)) then
+        write(*,*) 'DEBUG VAR_ZB: zb not allocated'
+        status = BMI_FAILURE
+        return
+      end if
+      dest(1:np) = real(zb(1:np), kind=real32)
+      write(*,*) 'DEBUG VAR_ZB: returned zb'
+      status = BMI_SUCCESS
     end if
-    dest(1:npuv) = q(1:npuv)
-    status = BMI_SUCCESS
 
   case (VAR_UV)
     if (size(dest) < npuv) then
@@ -836,7 +872,52 @@ function sfincs_bmi_get_value_float(this, name, dest) result(status)
     end if
     dest(1:np) = z_yz(1:np)
     status = BMI_SUCCESS
+ case (VAR_U)
+  if (size(dest) < np) then
+    status = BMI_FAILURE
+    return
+  end if
 
+  do i = 1, np
+    nmd1 = z_index_uv_md(i)
+    nmu1 = z_index_uv_mu(i)
+    ndm1 = z_index_uv_nd(i)
+    num1 = z_index_uv_nu(i)
+
+    uz = 0.0_real32
+    vz = 0.0_real32
+
+    if (nmd1 > 0) uz = uz + 0.5_real32 * uv(nmd1)
+    if (nmu1 > 0) uz = uz + 0.5_real32 * uv(nmu1)
+    if (ndm1 > 0) vz = vz + 0.5_real32 * uv(ndm1)
+    if (num1 > 0) vz = vz + 0.5_real32 * uv(num1)
+
+    dest(i) = real(cosrot, kind=real32) * uz - real(sinrot, kind=real32) * vz
+  end do
+  status = BMI_SUCCESS
+case (VAR_V)
+  if (size(dest) < np) then
+    status = BMI_FAILURE
+    return
+  end if
+
+  do i = 1, np
+    nmd1 = z_index_uv_md(i)
+    nmu1 = z_index_uv_mu(i)
+    ndm1 = z_index_uv_nd(i)
+    num1 = z_index_uv_nu(i)
+
+    uz = 0.0_real32
+    vz = 0.0_real32
+
+    if (nmd1 > 0) uz = uz + 0.5_real32 * uv(nmd1)
+    if (nmu1 > 0) uz = uz + 0.5_real32 * uv(nmu1)
+    if (ndm1 > 0) vz = vz + 0.5_real32 * uv(ndm1)
+    if (num1 > 0) vz = vz + 0.5_real32 * uv(num1)
+
+    dest(i) = real(sinrot, kind=real32) * uz + real(cosrot, kind=real32) * vz
+  end do
+  status = BMI_SUCCESS
   case default
     status = BMI_FAILURE
   end select
@@ -1001,18 +1082,34 @@ function sfincs_bmi_get_value_double(this, name, dest) result(status)
   real(real64),      intent(inout) :: dest(:)
   integer :: status
   character(len=:), allocatable :: cname
-  integer :: i
+  integer :: i, nmd1, nmu1, ndm1, num1
+  real(real64) :: uz, vz
 
   cname = canon_var_name(name)
 
   select case (trim(cname))
-  case (VAR_ZB)
+
+    case (VAR_ZB)
     if (size(dest) < np) then
       status = BMI_FAILURE
       return
     end if
-    dest(1:np) = real(zb(1:np), kind=real64)
-    status = BMI_SUCCESS
+
+    if (subgrid) then
+      if (.not. allocated(subgrid_z_zmin)) then
+        status = BMI_FAILURE
+        return
+      end if
+      dest(1:np) = real(subgrid_z_zmin(1:np), kind=real64)
+      status = BMI_SUCCESS
+    else
+      if (.not. allocated(zb)) then
+        status = BMI_FAILURE
+        return
+      end if
+      dest(1:np) = real(zb(1:np), kind=real64)
+      status = BMI_SUCCESS
+    end if
 
   case (VAR_ZS)
     if (size(dest) < np) then
@@ -1027,7 +1124,52 @@ function sfincs_bmi_get_value_double(this, name, dest) result(status)
     end if
     dest(1:np) = z_volume(1:np)
     status = BMI_SUCCESS
+ case (VAR_U)
+  if (size(dest) < np) then
+    status = BMI_FAILURE
+    return
+  end if
 
+  do i = 1, np
+    nmd1 = z_index_uv_md(i)
+    nmu1 = z_index_uv_mu(i)
+    ndm1 = z_index_uv_nd(i)
+    num1 = z_index_uv_nu(i)
+
+    uz = 0.0_real32
+    vz = 0.0_real32
+
+    if (nmd1 > 0) uz = uz + 0.5_real32 * uv(nmd1)
+    if (nmu1 > 0) uz = uz + 0.5_real32 * uv(nmu1)
+    if (ndm1 > 0) vz = vz + 0.5_real32 * uv(ndm1)
+    if (num1 > 0) vz = vz + 0.5_real32 * uv(num1)
+
+    dest(i) = real(cosrot, kind=real32) * uz - real(sinrot, kind=real32) * vz
+  end do
+  status = BMI_SUCCESS
+case (VAR_V)
+  if (size(dest) < np) then
+    status = BMI_FAILURE
+    return
+  end if
+
+  do i = 1, np
+    nmd1 = z_index_uv_md(i)
+    nmu1 = z_index_uv_mu(i)
+    ndm1 = z_index_uv_nd(i)
+    num1 = z_index_uv_nu(i)
+
+    uz = 0.0_real32
+    vz = 0.0_real32
+
+    if (nmd1 > 0) uz = uz + 0.5_real32 * uv(nmd1)
+    if (nmu1 > 0) uz = uz + 0.5_real32 * uv(nmu1)
+    if (ndm1 > 0) vz = vz + 0.5_real32 * uv(ndm1)
+    if (num1 > 0) vz = vz + 0.5_real32 * uv(num1)
+
+    dest(i) = real(sinrot, kind=real32) * uz + real(cosrot, kind=real32) * vz
+  end do
+  status = BMI_SUCCESS
   case default
     status = BMI_FAILURE
   end select
@@ -1234,6 +1376,10 @@ end function sfincs_bmi_get_value_double
       canon = VAR_Q
     case ('uv')
       canon = VAR_UV
+    case ('u', 'vx', 'velx', 'velocityx', 'x_velocity')
+      canon = VAR_U
+    case ('v', 'vy', 'vely', 'velocityy', 'y_velocity')
+      canon = VAR_V
     case ('zsmax')
       canon = VAR_ZSMAX
     case ('z_volume')

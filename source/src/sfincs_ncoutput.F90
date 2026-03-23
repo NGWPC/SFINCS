@@ -3741,6 +3741,9 @@ contains
    !   
    implicit none   
    !
+   write(*,*) 'DEBUG: entering ncoutput_map_finalize'
+   flush(6)
+
    if (store_tsunami_arrival_time) then
       !
       call ncoutput_write_tsunami_arrival_time()
@@ -3759,6 +3762,8 @@ contains
    !
    NF90(nf90_close(map_file%ncid))
    !
+   write(*,*) 'DEBUG: exiting ncoutput_map_finalize'
+   flush(6)
    end subroutine ncoutput_map_finalize
    !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -3776,6 +3781,10 @@ contains
    real*4, dimension(:,:), allocatable :: zsg1, zsg2
    integer :: nm, nmq, n, m
    !
+
+   write(*,*) 'DEBUG: entering ncoutput tsunami_arrival_time'
+   flush(6)
+
    if (use_quadtree) then
       !
       allocate(vtmp1(quadtree_nr_points))
@@ -3834,12 +3843,14 @@ contains
       deallocate(zsg2)
       !
    endif   
+   write(*,*) 'DEBUG: exiting ncoutput_write_timestep_analysis'
+   flush(6)
    !
    end subroutine ncoutput_write_timestep_analysis
    !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    !
-   subroutine ncoutput_write_tsunami_arrival_time() 
+   subroutine ncoutput_write_tsunami_arrival_time_old() 
    ! Add tsunami_arrival_time
    use sfincs_data
    !   
@@ -3884,6 +3895,52 @@ contains
    endif     
    !
    end subroutine   
+
+subroutine ncoutput_write_tsunami_arrival_time()
+   use sfincs_data
+   use quadtree
+   implicit none
+
+   real*4, dimension(:,:), allocatable :: zsg
+   real*4, dimension(:),   allocatable :: vtmp
+   integer :: nm, nmq, n, m
+
+   write(*,*) 'DEBUG: entering ncoutput tsunami_arrival_time'
+   flush(6)
+
+   if (use_quadtree) then
+      allocate(vtmp(quadtree_nr_points))
+      vtmp = FILL_VALUE
+
+      do nmq = 1, quadtree_nr_points
+         nm = index_sfincs_in_quadtree(nmq)
+         if (nm > 0) then
+            vtmp(nmq) = tsunami_arrival_time(nm)
+         end if
+      end do
+
+      NF90(nf90_put_var(map_file%ncid, map_file%tsunami_arrival_time_varid, vtmp))
+      deallocate(vtmp)
+
+   else
+      allocate(zsg(mmax, nmax))
+      zsg = FILL_VALUE
+
+      do nm = 1, np
+         n = z_index_z_n(nm)
+         m = z_index_z_m(nm)
+         zsg(m, n) = tsunami_arrival_time(nm)
+      end do
+
+      NF90(nf90_put_var(map_file%ncid, map_file%tsunami_arrival_time_varid, zsg, (/1, 1/)))
+      deallocate(zsg)
+   end if
+
+   write(*,*) 'DEBUG: exiting ncoutput tsunami_arrival_time'
+   flush(6)
+end subroutine
+
+
    !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    !
@@ -3893,7 +3950,9 @@ contains
    use sfincs_data
    !   
    implicit none   
-   !   
+   !
+   write(*,*) 'DEBUG: entering ncoutput_his_finalize'
+   flush(6)   
    if (nobs==0 .and. nrcrosssections==0 .and. nrstructures==0 .and. nrthindams==0 .and. ndrn==0) then ! If no observation points, cross-sections, structures 9weir or thin dam), or drains; hisfile        
         return
    endif   
@@ -3904,6 +3963,8 @@ contains
    !   
    NF90(nf90_close(his_file%ncid))
    !
+   write(*,*) 'DEBUG: exiting ncoutput_his_finalize'
+   flush(6)
    end subroutine
    !  
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
