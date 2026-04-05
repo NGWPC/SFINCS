@@ -78,7 +78,8 @@ contains
    !
    implicit none   
    !   
-   integer                      :: nm, n, m, ntmx
+   ! integer                      :: nm, n, m, ntmx
+   integer                      :: nm, n, m
    !
    real*4, dimension(:,:), allocatable :: zsg
    real*4, dimension(:,:), allocatable :: xz
@@ -95,11 +96,17 @@ contains
    NF90(nf90_def_dim(map_file%ncid, 'm', mmax, map_file%m_dimid)) ! columns
    NF90(nf90_def_dim(map_file%ncid, 'corner_n', nmax + 1, map_file%corner_n_dimid)) ! rows of corners
    NF90(nf90_def_dim(map_file%ncid, 'corner_m', mmax + 1, map_file%corner_m_dimid)) ! columns of corners   
-   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
-   ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)
-   NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
-   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
+   
    !
+   ! NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
+   ! ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)
+   ! NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
+   ! NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
+   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid))
+   NF90(nf90_def_dim(map_file%ncid, 'timemax', NF90_UNLIMITED, map_file%timemax_dimid))
+   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid))
+
+
    ! Some metadata attributes 
    NF90(nf90_put_att(map_file%ncid,nf90_global, "Conventions", "Conventions = 'CF-1.6, SGRID-0.3")) 
    NF90(nf90_put_att(map_file%ncid,nf90_global, "Build-Revision-Date-Netcdf-library", trim(nf90_inq_libvers()))) ! version of netcdf library
@@ -869,7 +876,8 @@ contains
    !
    implicit none   
    !   
-   integer    :: nm, nmq, nmu1, num1, n, m, nn, ntmx, n_nodes, n_faces, iref
+   ! integer    :: nm, nmq, nmu1, num1, n, m, nn, ntmx, n_nodes, n_faces, iref
+   integer    :: nm, nmq, nmu1, num1, n, m, nn, n_nodes, n_faces, iref
    real*4     :: dxx, dyy
    !
    real,      dimension(:),   allocatable :: nodes_x
@@ -942,10 +950,13 @@ contains
    !
    ! Time
    !
-   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
-   ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)   
-   NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
-   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
+   ! NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
+   ! ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)   
+   ! NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
+   ! NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
+   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid))
+   NF90(nf90_def_dim(map_file%ncid, 'timemax', NF90_UNLIMITED, map_file%timemax_dimid))
+   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid))
    !
    ! Some metadata attributes 
    !
