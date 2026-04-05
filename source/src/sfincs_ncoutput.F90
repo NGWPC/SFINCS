@@ -78,8 +78,7 @@ contains
    !
    implicit none   
    !   
-   ! integer                      :: nm, n, m, ntmx
-   integer                      :: nm, n, m
+   integer                      :: nm, n, m, ntmx
    !
    real*4, dimension(:,:), allocatable :: zsg
    real*4, dimension(:,:), allocatable :: xz
@@ -96,17 +95,11 @@ contains
    NF90(nf90_def_dim(map_file%ncid, 'm', mmax, map_file%m_dimid)) ! columns
    NF90(nf90_def_dim(map_file%ncid, 'corner_n', nmax + 1, map_file%corner_n_dimid)) ! rows of corners
    NF90(nf90_def_dim(map_file%ncid, 'corner_m', mmax + 1, map_file%corner_m_dimid)) ! columns of corners   
-   
+   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
+   ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)
+   NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
+   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
    !
-   ! NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
-   ! ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)
-   ! NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
-   ! NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
-   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid))
-   NF90(nf90_def_dim(map_file%ncid, 'timemax', NF90_UNLIMITED, map_file%timemax_dimid))
-   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid))
-
-
    ! Some metadata attributes 
    NF90(nf90_put_att(map_file%ncid,nf90_global, "Conventions", "Conventions = 'CF-1.6, SGRID-0.3")) 
    NF90(nf90_put_att(map_file%ncid,nf90_global, "Build-Revision-Date-Netcdf-library", trim(nf90_inq_libvers()))) ! version of netcdf library
@@ -876,8 +869,7 @@ contains
    !
    implicit none   
    !   
-   ! integer    :: nm, nmq, nmu1, num1, n, m, nn, ntmx, n_nodes, n_faces, iref
-   integer    :: nm, nmq, nmu1, num1, n, m, nn, n_nodes, n_faces, iref
+   integer    :: nm, nmq, nmu1, num1, n, m, nn, ntmx, n_nodes, n_faces, iref
    real*4     :: dxx, dyy
    !
    real,      dimension(:),   allocatable :: nodes_x
@@ -950,13 +942,10 @@ contains
    !
    ! Time
    !
-   ! NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
-   ! ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)   
-   ! NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
-   ! NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
-   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid))
-   NF90(nf90_def_dim(map_file%ncid, 'timemax', NF90_UNLIMITED, map_file%timemax_dimid))
-   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid))
+   NF90(nf90_def_dim(map_file%ncid, 'time', NF90_UNLIMITED, map_file%time_dimid)) ! time
+   ntmx = max(ceiling((t1out - t0out)/dtmaxout), 1)   
+   NF90(nf90_def_dim(map_file%ncid, 'timemax', ntmx, map_file%timemax_dimid)) ! time
+   NF90(nf90_def_dim(map_file%ncid, 'runtime', 1, map_file%runtime_dimid)) ! total_runtime, average_dt       
    !
    ! Some metadata attributes 
    !
@@ -3752,9 +3741,6 @@ contains
    !   
    implicit none   
    !
-   write(*,*) 'DEBUG: entering ncoutput_map_finalize'
-   flush(6)
-
    if (store_tsunami_arrival_time) then
       !
       call ncoutput_write_tsunami_arrival_time()
@@ -3773,8 +3759,6 @@ contains
    !
    NF90(nf90_close(map_file%ncid))
    !
-   write(*,*) 'DEBUG: exiting ncoutput_map_finalize'
-   flush(6)
    end subroutine ncoutput_map_finalize
    !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -3792,10 +3776,6 @@ contains
    real*4, dimension(:,:), allocatable :: zsg1, zsg2
    integer :: nm, nmq, n, m
    !
-
-   write(*,*) 'DEBUG: entering ncoutput tsunami_arrival_time'
-   flush(6)
-
    if (use_quadtree) then
       !
       allocate(vtmp1(quadtree_nr_points))
@@ -3854,14 +3834,12 @@ contains
       deallocate(zsg2)
       !
    endif   
-   write(*,*) 'DEBUG: exiting ncoutput_write_timestep_analysis'
-   flush(6)
    !
    end subroutine ncoutput_write_timestep_analysis
    !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    !
-   subroutine ncoutput_write_tsunami_arrival_time_old() 
+   subroutine ncoutput_write_tsunami_arrival_time() 
    ! Add tsunami_arrival_time
    use sfincs_data
    !   
@@ -3906,52 +3884,6 @@ contains
    endif     
    !
    end subroutine   
-
-subroutine ncoutput_write_tsunami_arrival_time()
-   use sfincs_data
-   use quadtree
-   implicit none
-
-   real*4, dimension(:,:), allocatable :: zsg
-   real*4, dimension(:),   allocatable :: vtmp
-   integer :: nm, nmq, n, m
-
-   write(*,*) 'DEBUG: entering ncoutput tsunami_arrival_time'
-   flush(6)
-
-   if (use_quadtree) then
-      allocate(vtmp(quadtree_nr_points))
-      vtmp = FILL_VALUE
-
-      do nmq = 1, quadtree_nr_points
-         nm = index_sfincs_in_quadtree(nmq)
-         if (nm > 0) then
-            vtmp(nmq) = tsunami_arrival_time(nm)
-         end if
-      end do
-
-      NF90(nf90_put_var(map_file%ncid, map_file%tsunami_arrival_time_varid, vtmp))
-      deallocate(vtmp)
-
-   else
-      allocate(zsg(mmax, nmax))
-      zsg = FILL_VALUE
-
-      do nm = 1, np
-         n = z_index_z_n(nm)
-         m = z_index_z_m(nm)
-         zsg(m, n) = tsunami_arrival_time(nm)
-      end do
-
-      NF90(nf90_put_var(map_file%ncid, map_file%tsunami_arrival_time_varid, zsg, (/1, 1/)))
-      deallocate(zsg)
-   end if
-
-   write(*,*) 'DEBUG: exiting ncoutput tsunami_arrival_time'
-   flush(6)
-end subroutine
-
-
    !
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    !
@@ -3961,9 +3893,7 @@ end subroutine
    use sfincs_data
    !   
    implicit none   
-   !
-   write(*,*) 'DEBUG: entering ncoutput_his_finalize'
-   flush(6)   
+   !   
    if (nobs==0 .and. nrcrosssections==0 .and. nrstructures==0 .and. nrthindams==0 .and. ndrn==0) then ! If no observation points, cross-sections, structures 9weir or thin dam), or drains; hisfile        
         return
    endif   
@@ -3974,8 +3904,6 @@ end subroutine
    !   
    NF90(nf90_close(his_file%ncid))
    !
-   write(*,*) 'DEBUG: exiting ncoutput_his_finalize'
-   flush(6)
    end subroutine
    !  
    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
