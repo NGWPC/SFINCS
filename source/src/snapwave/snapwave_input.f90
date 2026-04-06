@@ -6,7 +6,19 @@ contains
    !
    ! Reads snapwave.inp
    !
-   use snapwave_data   
+   !use snapwave_data 
+   use snapwave_data, only: &
+ nmax, mmax, dx, dy, x0, y0, rotation, trefstr, tstartstr, tstopstr, &
+ timestep, gamma, alpha, hmin, sferic, fw0, fw0_ig, dt, tol, dtheta, &
+ gridfile, upwfile, mskfile, indfile, depfile, obsfile, outputformat, &
+ map_filename, his_filename, tstart, tstop, restart, &
+ jonswapfile => snapwave_jonswapfile, &
+ bndfile     => snapwave_bndfile, &
+ encfile     => snapwave_encfile, &
+ bhsfile     => snapwave_bhsfile, &
+ btpfile     => snapwave_btpfile, &
+ bwdfile     => snapwave_bwdfile, &
+ bdsfile     => snapwave_bdsfile  
    use snapwave_date
    !
    implicit none
@@ -32,7 +44,8 @@ contains
    call read_char_input(500,'tstop',tstopstr,'20000101 000000')
    call read_real_input(500,'timestep',timestep,3600.0)
    call read_real_input(500,'gamma',gamma,0.7)
-   call read_real_input(500,'alpha',snapwave_alpha,1.0)
+   ! call read_real_input(500,'alpha',snapwave_alpha,1.0)
+   call read_real_input(500,'alpha',alpha,1.0)
    call read_real_input(500,'hmin',hmin,0.1)
    call read_char_input(500,'gridfile',gridfile,'.txt')
    call read_int_input(500,'sferic',sferic,0)
