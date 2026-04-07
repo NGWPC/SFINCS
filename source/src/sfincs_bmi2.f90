@@ -9,7 +9,7 @@ module sfincs_bmi2
   use bmif_2_0_iso, only: bmi, BMI_SUCCESS, BMI_FAILURE
 
   use sfincs_data, only: &
-      np, npuv, t0, t1, &
+      np, npuv, t0, t1, t0out, dtmaxout, use_quadtree, &
       zs, zb, q, uv, zsmax, z_volume, &
       subgrid, subgrid_z_zmin, subgrid_z_zmax, subgrid_z_dep, subgrid_z_volmax, &
       qext, prcp, windu, windv, patm, uorb, &
@@ -18,7 +18,9 @@ module sfincs_bmi2
       kcs, z_flags_iref, uv_flags_dir, uv_flags_type, &
       cosrot, sinrot, z_index_uv_md, z_index_uv_mu, z_index_uv_nd, z_index_uv_nu
 
-  use sfincs_lib, only: sfincs_initialize, sfincs_update, sfincs_finalize, t, dt
+  use sfincs_lib,  only: sfincs_initialize, sfincs_update, sfincs_finalize, t, dt
+use sfincs_output,   only: finalize_output
+use sfincs_ncoutput, only: ncoutput_update_max, ncoutput_update_quadtree_max
 
   implicit none
   private
@@ -92,6 +94,7 @@ module sfincs_bmi2
     character(len=:), pointer :: component_name => null()
 
     logical :: is_initialized = .false.
+    logical :: final_max_written = .false.
 
   contains
     procedure :: initialize                 => sfincs_bmi_initialize
@@ -159,12 +162,13 @@ module sfincs_bmi2
 
 contains
 
-  function sfincs_bmi_initialize(this, config_file) result(status)
+  function sfincs_bmi_initialize_old(this, config_file) result(status)
     class(sfincs_bmi), intent(out) :: this
     character(len=*),  intent(in)  :: config_file
     integer :: status
     integer :: ierr
 
+    call bmi_trace('*** THIS IS MY NEW BUILD ***')
     write(*,*) 'sfincs_bmi_initialize config_file = ', trim(config_file)
 
     ierr = sfincs_initialize()
@@ -199,85 +203,141 @@ contains
     this%component_name => g_component_name
     this%is_initialized = .true.
     status = BMI_SUCCESS
-  end function sfincs_bmi_initialize
+  end function sfincs_bmi_initialize_old
 
-  function sfincs_bmi_update(this) result(status)
-    class(sfincs_bmi), intent(inout) :: this
-    integer :: status
-    integer :: ierr
-    double precision :: dtrange
+function sfincs_bmi_initialize(this, config_file) result(status)
+  class(sfincs_bmi), intent(out) :: this
+  character(len=*),  intent(in)  :: config_file
+  integer :: status
+  integer :: ierr
 
-    if (.not. this%is_initialized) then
-      status = BMI_FAILURE
-      return
-    end if
+  call bmi_trace('ENTER initialize')
 
-    dtrange = this%dt
+  this%final_max_written = .false.
+
+  ierr = sfincs_initialize()
+  if (ierr /= 0) then
+    call bmi_trace('LEAVE initialize FAILURE')
+    status = BMI_FAILURE
+    return
+  end if
+
+  this%t_start = dble(t0)
+  this%t_end   = dble(t1)
+  this%t       = dble(t)
+
+  ! Use a fixed chunk instead of one giant range.
+  this%dt = 3600.0d0
+
+  this%n_cells = np
+  this%n_edges = npuv
+
+  if (.not. allocated(g_component_name)) then
+    allocate(character(len=10) :: g_component_name)
+    g_component_name = 'SFINCS BMI'
+  end if
+
+  if (.not. allocated(g_time_units)) then
+    allocate(character(len=1) :: g_time_units)
+    g_time_units = 's'
+  end if
+
+  this%component_name => g_component_name
+  this%is_initialized = .true.
+
+  call bmi_trace('LEAVE initialize SUCCESS', this%t, this%t_end)
+  status = BMI_SUCCESS
+end function sfincs_bmi_initialize
+
+function sfincs_bmi_update(this) result(status)
+  class(sfincs_bmi), intent(inout) :: this
+  integer :: status
+
+  status = this%update_until(this%t + this%dt)
+end function sfincs_bmi_update
+
+
+function sfincs_bmi_update_until(this, time) result(status)
+  class(sfincs_bmi), intent(inout) :: this
+  double precision,  intent(in)    :: time
+  integer :: status
+  integer :: ierr
+  double precision :: target_time, dtrange
+  double precision, parameter :: tol = 1.0d-6
+  integer :: ntmax_expected
+
+  if (.not. this%is_initialized) then
+    status = BMI_FAILURE
+    return
+  end if
+
+  target_time = min(time, dble(t1))
+
+  if (target_time <= this%t + 1.0d-12) then
+    status = BMI_SUCCESS
+    return
+  end if
+
+  do while (this%t < target_time - tol)
+
+    dtrange = min(this%dt, target_time - this%t)
+
     ierr = sfincs_update(dtrange)
     if (ierr /= 0) then
       status = BMI_FAILURE
       return
     end if
 
-    this%t = t
+    this%t = dble(t)
+
+    if (this%t >= target_time - tol) exit
+
+  end do
+
+  ! BMI/NGen path may not call sfincs_finalize(), so write the final
+  ! dtmaxout interval explicitly here once when we reach model end.
+  if (.not. this%final_max_written) then
+    if (dtmaxout > 1.0e-6) then
+      if (target_time >= dble(t1) - tol) then
+
+        ntmax_expected = max(ceiling((real(t1,kind=8) - real(t0out,kind=8)) / real(dtmaxout,kind=8)), 1)
+
+        if (use_quadtree) then
+          call ncoutput_update_quadtree_max(dble(t1), ntmax_expected)
+        else
+          call ncoutput_update_max(dble(t1), ntmax_expected)
+        end if
+
+        this%final_max_written = .true.
+      end if
+    end if
+  end if
+
+  status = BMI_SUCCESS
+end function sfincs_bmi_update_until
+
+
+function sfincs_bmi_finalize(this) result(status)
+  class(sfincs_bmi), intent(inout) :: this
+  integer :: status
+  integer :: ierr
+
+  if (.not. this%is_initialized) then
     status = BMI_SUCCESS
-  end function sfincs_bmi_update
+    return
+  end if
 
-  function sfincs_bmi_update_until(this, time) result(status)
-    class(sfincs_bmi), intent(inout) :: this
-    double precision,  intent(in)    :: time
-    integer :: status
-    integer :: ierr
-    double precision :: dtrange
+  ierr = sfincs_finalize()
 
-    if (.not. this%is_initialized) then
-      status = BMI_FAILURE
-      return
-    end if
+  nullify(this%component_name)
+  this%is_initialized = .false.
 
-    if (time <= this%t + 1.0d-12) then
-      status = BMI_SUCCESS
-      return
-    end if
-
-    dtrange = time - this%t
-    ierr = sfincs_update(dtrange)
-    if (ierr /= 0) then
-      status = BMI_FAILURE
-      return
-    end if
-
-    this%t = t
+  if (ierr /= 0) then
+    status = BMI_FAILURE
+  else
     status = BMI_SUCCESS
-  end function sfincs_bmi_update_until
-
-  function sfincs_bmi_finalize(this) result(status)
-    class(sfincs_bmi), intent(inout) :: this
-    integer :: status
-    integer :: ierr
-
-    write(*,*) 'DEBUG: entering sfincs_bmi_finalize'
-    flush(6)
-
-    if (.not. this%is_initialized) then
-      status = BMI_SUCCESS
-      return
-    end if
-
-    ierr = sfincs_finalize()
-    nullify(this%component_name)
-    this%is_initialized = .false.
-
-    if (ierr /= 0) then
-      status = BMI_FAILURE
-    else
-      status = BMI_SUCCESS
-    end if
-
-    write(*,*) 'DEBUG: leaving sfincs_bmi_finalize'
-    flush(6)
-
-  end function sfincs_bmi_finalize
+  end if
+end function sfincs_bmi_finalize
 
   function sfincs_bmi_get_component_name(this, name) result(status)
     class(sfincs_bmi),         intent(in)  :: this
@@ -1416,5 +1476,23 @@ end function sfincs_bmi_get_value_double
       canon = cname
     end select
   end function canon_var_name
+
+subroutine bmi_trace(msg, v1, v2)
+  implicit none
+  character(len=*), intent(in) :: msg
+  double precision, intent(in), optional :: v1, v2
+  integer :: iu
+
+  open(newunit=iu, file='/home/mohammed.karim/Calibration/ngen/sfincs_bmi_trace.log', &
+       status='unknown', position='append', action='write')
+  if (present(v1) .and. present(v2)) then
+    write(iu,*) trim(msg), v1, v2
+  elseif (present(v1)) then
+    write(iu,*) trim(msg), v1
+  else
+    write(iu,*) trim(msg)
+  end if
+  close(iu)
+end subroutine bmi_trace
 
 end module sfincs_bmi2
