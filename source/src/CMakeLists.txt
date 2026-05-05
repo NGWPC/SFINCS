@@ -188,7 +188,15 @@ if(EXISTS "${SNAPWAVE_DIR}")
     "${SNAPWAVE_DIR}/*.f90"
     "${SNAPWAVE_DIR}/*.F90"
   )
+
   if(SNAPWAVE_SOURCES)
+    foreach(_snap_src IN LISTS SNAPWAVE_SOURCES)
+      if(_snap_src MATCHES ".*/snapwave_input\\.f90$")
+        message(STATUS "SFINCS: excluding SnapWave input source from BMI build: ${_snap_src}")
+      endif()
+    endforeach()
+
+    list(FILTER SNAPWAVE_SOURCES EXCLUDE REGEX ".*/snapwave_input\\.f90$")
     list(APPEND SFINCS_CORE_SOURCES ${SNAPWAVE_SOURCES})
   endif()
 endif()
