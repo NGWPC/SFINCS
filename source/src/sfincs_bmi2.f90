@@ -168,9 +168,6 @@ contains
     integer :: status
     integer :: ierr
 
-    call bmi_trace('*** THIS IS MY NEW BUILD ***')
-    write(*,*) 'sfincs_bmi_initialize config_file = ', trim(config_file)
-
     ierr = sfincs_initialize()
     if (ierr /= 0) then
       status = BMI_FAILURE
@@ -211,13 +208,10 @@ function sfincs_bmi_initialize(this, config_file) result(status)
   integer :: status
   integer :: ierr
 
-  call bmi_trace('ENTER initialize')
-
   this%final_max_written = .false.
 
   ierr = sfincs_initialize()
   if (ierr /= 0) then
-    call bmi_trace('LEAVE initialize FAILURE')
     status = BMI_FAILURE
     return
   end if
@@ -245,7 +239,6 @@ function sfincs_bmi_initialize(this, config_file) result(status)
   this%component_name => g_component_name
   this%is_initialized = .true.
 
-  call bmi_trace('LEAVE initialize SUCCESS', this%t, this%t_end)
   status = BMI_SUCCESS
 end function sfincs_bmi_initialize
 
@@ -1476,23 +1469,5 @@ end function sfincs_bmi_get_value_double
       canon = cname
     end select
   end function canon_var_name
-
-subroutine bmi_trace(msg, v1, v2)
-  implicit none
-  character(len=*), intent(in) :: msg
-  double precision, intent(in), optional :: v1, v2
-  integer :: iu
-
-  open(newunit=iu, file='/home/mohammed.karim/Calibration/ngen/sfincs_bmi_trace.log', &
-       status='unknown', position='append', action='write')
-  if (present(v1) .and. present(v2)) then
-    write(iu,*) trim(msg), v1, v2
-  elseif (present(v1)) then
-    write(iu,*) trim(msg), v1
-  else
-    write(iu,*) trim(msg)
-  end if
-  close(iu)
-end subroutine bmi_trace
 
 end module sfincs_bmi2
